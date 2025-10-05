@@ -20,63 +20,14 @@ CATEGORIA_OPCIONES = [
     'Embutidos',
     'Esencias y colorantes',
     'Salsas y conservas',
-    'Varios y acompañantes, Panadería y pastelería', # Categoría fusionada
+    'Varios y acompañantes, Panadería y pastelería',
     'Lácteos',
     'Desechables',
     'Moldes, motivos y utensilios'
 ]
 
-# --- INICIALIZACIÓN DE DATOS (DataFrame Vacío y Persistencia) ---
+# --- FUNCIONES DE AYUDA ---
 
-# Inventario principal
-if 'df_inventario' not in st.session_state:
-    columnas = ['ID', 'Producto', 'Stock', 'Categoría', 'Presentación', 'Ventas', 'Compras']
-    df_inventario_vacio = pd.DataFrame(columns=columnas)
-    
-    # === LÓGICA DE CARGA AUTOMÁTICA DEL ARCHIVO INICIAL (Invisible) ===
-    try:
-        archivo_path = 'inventario_inicial.xlsx' 
-        
-        if archivo_path.endswith('.csv'):
-            df_inicial = pd.read_csv(archivo_path)
-        else:
-            # NOTA: Asegúrate de tener 'openpyxl' en requirements.txt para evitar el error.
-            df_inicial = pd.read_excel(archivo_path)
-            
-        # Asegurarse de que las columnas coincidan
-        df_inicial.columns = ['ID', 'Producto', 'Stock Inicial', 'Categoría', 'Presentación']
-        
-        # Preparar los datos para el DataFrame de la aplicación
-        df_cargado = pd.DataFrame({
-            'ID': df_inicial['ID'].astype(str).str.upper().str.strip(),
-            'Producto': df_inicial['Producto'],
-            'Stock': pd.to_numeric(df_inicial['Stock Inicial'], errors='coerce').fillna(0).astype(int),
-            'Categoría': df_inicial['Categoría'],
-            'Presentación': df_inicial['Presentación'],
-            'Ventas': 0,
-            'Compras': 0
-        })
-        
-        st.session_state.df_inventario = df_cargado
-        st.toast("✅ Inventario inicial cargado desde archivo.", icon="📦")
-        
-    except FileNotFoundError:
-        st.session_state.df_inventario = df_inventario_vacio
-        
-    except Exception as e:
-        # Esto captura el error de 'openpyxl' si ocurre
-        st.error(f"Error al cargar el archivo inicial. Revise el formato (ID, Producto, Stock Inicial, Categoría, Presentación). Error: {e}")
-        st.session_state.df_inventario = df_inventario_vacio
-
-# Historial de registros (SIN FECHA)
-if 'df_ventas_hist' not in st.session_state:
-    st.session_state.df_ventas_hist = pd.DataFrame(columns=['ID', 'Producto', 'Cantidad'])
-
-if 'df_compras_hist' not in st.session_state:
-    st.session_state.df_compras_hist = pd.DataFrame(columns=['ID', 'Producto', 'Cantidad'])
-
-
-# --- FUNCIÓN PARA AÑADIR PRODUCTO (Registro Manual) ---
 def add_product(new_id, new_category, new_name, new_presentation, new_stock):
     """Añade un nuevo producto al DataFrame de inventario."""
     new_row = pd.DataFrame([{
@@ -90,6 +41,160 @@ def add_product(new_id, new_category, new_name, new_presentation, new_stock):
     }])
     st.session_state.df_inventario = pd.concat([st.session_state.df_inventario, new_row], ignore_index=True)
     st.success(f"Producto '{new_name}' (ID: {new_id}) añadido con éxito!")
+
+
+def process_sales_from_df(df_ventas_new):
+    """Procesa un DataFrame de ventas (con columnas ID y Cantidad Vendida) 
+    y actualiza el inventario y el historial.
+    """
+    
+    # 1. Estandarizar y validar columnas
+    # Intentamos encontrar las columnas necesarias, asumiendo que el DF de entrada tiene 'ID' y 'Cantidad Vendida'
+    df_ventas_new.columns = [col.strip().replace(' ', '_').upper() for col in df_ventas_new.columns]
+
+    if 'ID' not in df_ventas_new.columns:
+        return 0, [], "Columna 'ID' faltante."
+        
+    col_cantidad_vendida = [col for col in df_ventas_new.columns if 'CANTIDAD_VENDIDA' in col]
+    if not col_cantidad_vendida:
+         return 0, [], "Columna 'Cantidad Vendida' faltante."
+
+    # Renombrar para facilitar el procesamiento
+    df_ventas_new = df_ventas_new[['ID', col_cantidad_vendida[0]]].rename(columns={col_cantidad_vendida[0]: 'CANTIDAD_VENDIDA'})
+
+    # 2. Preparar los datos
+    df_ventas_new['ID'] = df_ventas_new['ID'].astype(str).str.upper().str.strip()
+    df_ventas_new['CANTIDAD_VENDIDA'] = pd.to_numeric(df_ventas_new['CANTIDAD_VENDIDA'], errors='coerce').fillna(0).astype(int)
+    df_ventas_new = df_ventas_new[df_ventas_new['CANTIDAD_VENDIDA'] > 0]
+    
+    if st.session_state.df_inventario.empty:
+        return 0, [], "El inventario base está vacío."
+        
+    if df_ventas_new.empty:
+        return 0, [], "El archivo de ventas no contiene datos válidos."
+
+    # 3. Procesar las ventas
+    ventas_exitosas = 0
+    ventas_fallidas = []
+    nuevos_registros_historial = []
+
+    df_inventario_temp = st.session_state.df_inventario.copy()
+    
+    for index, row in df_ventas_new.iterrows():
+        product_id = row['ID']
+        cantidad = row['CANTIDAD_VENDIDA']
+        
+        match = df_inventario_temp[df_inventario_temp['ID'] == product_id]
+        
+        if not match.empty:
+            idx = match.index[0]
+            current_stock = df_inventario_temp.loc[idx, 'Stock']
+            product_name = df_inventario_temp.loc[idx, 'Producto']
+            
+            if cantidad <= current_stock:
+                # Actualizar inventario temporalmente
+                df_inventario_temp.loc[idx, 'Stock'] -= cantidad
+                df_inventario_temp.loc[idx, 'Ventas'] += cantidad
+                
+                # Registrar para historial
+                nuevos_registros_historial.append({
+                    'ID': product_id, 
+                    'Producto': product_name, 
+                    'Cantidad': cantidad
+                })
+                ventas_exitosas += 1
+            else:
+                ventas_fallidas.append(f"ID {product_id} ('{product_name}'): Cantidad ({cantidad}) excede el stock actual ({current_stock}).")
+        else:
+            ventas_fallidas.append(f"ID {product_id}: No encontrado en el inventario.")
+            
+    # 4. Aplicar cambios al state si hubo éxito
+    if ventas_exitosas > 0:
+        st.session_state.df_inventario = df_inventario_temp
+        df_hist_new = pd.DataFrame(nuevos_registros_historial)
+        st.session_state.df_ventas_hist = pd.concat([st.session_state.df_ventas_hist, df_hist_new], ignore_index=True)
+
+    return ventas_exitosas, ventas_fallidas, None
+
+
+# --- INICIALIZACIÓN DE DATOS (DataFrame Vacío y Persistencia) ---
+
+# Inventario principal
+if 'df_inventario' not in st.session_state:
+    columnas = ['ID', 'Producto', 'Stock', 'Categoría', 'Presentación', 'Ventas', 'Compras']
+    df_inventario_vacio = pd.DataFrame(columns=columnas)
+    
+    # === 1. LÓGICA DE CARGA AUTOMÁTICA DEL INVENTARIO INICIAL ===
+    try:
+        INVENTARIO_FILE_PATH = 'inventario_inicial.xlsx' 
+        
+        if INVENTARIO_FILE_PATH.endswith('.csv'):
+            df_inicial = pd.read_csv(INVENTARIO_FILE_PATH)
+        else:
+            df_inicial = pd.read_excel(INVENTARIO_FILE_PATH)
+            
+        # Nombres de columna estandarizados para la inicialización
+        df_inicial.columns = df_inicial.columns.str.strip().str.replace(' ', '_').str.upper()
+        
+        # 1. Inicializar el inventario base
+        df_cargado = pd.DataFrame({
+            'ID': df_inicial['ID'].astype(str).str.upper().str.strip(),
+            'Producto': df_inicial['PRODUCTO'],
+            'Stock': pd.to_numeric(df_inicial['STOCK_INICIAL'], errors='coerce').fillna(0).astype(int),
+            'Categoría': df_inicial['CATEGORIA'],
+            'Presentación': df_inicial['PRESENTACION'],
+            'Ventas': 0,
+            'Compras': 0
+        })
+        
+        st.session_state.df_inventario = df_cargado
+        st.toast("✅ Inventario base cargado desde archivo inicial.", icon="📦")
+        
+    except FileNotFoundError:
+        st.session_state.df_inventario = df_inventario_vacio
+        st.warning("No se encontró 'inventario_inicial.xlsx'. Iniciando con inventario vacío.")
+        
+    except Exception as e:
+        st.error(f"Error al cargar el archivo de inventario: {e}")
+        st.session_state.df_inventario = df_inventario_vacio
+
+# Historial de registros (SIN FECHA)
+if 'df_ventas_hist' not in st.session_state:
+    st.session_state.df_ventas_hist = pd.DataFrame(columns=['ID', 'Producto', 'Cantidad'])
+
+if 'df_compras_hist' not in st.session_state:
+    st.session_state.df_compras_hist = pd.DataFrame(columns=['ID', 'Producto', 'Cantidad'])
+
+
+# === 2. LÓGICA DE CARGA AUTOMÁTICA DE VENTAS DE MOVIMIENTO (después de cargar el inventario) ===
+if not st.session_state.df_inventario.empty:
+    try:
+        VENTAS_FILE_PATH = 'ventas_mes.xlsx' 
+        
+        # Leemos el archivo de ventas
+        if VENTAS_FILE_PATH.endswith('.csv'):
+            df_ventas_github = pd.read_csv(VENTAS_FILE_PATH)
+        else:
+            df_ventas_github = pd.read_excel(VENTAS_FILE_PATH)
+            
+        # Llama a la función de procesamiento
+        ventas_exitosas, ventas_fallidas, error = process_sales_from_df(df_ventas_github)
+        
+        if error:
+             st.warning(f"Error en el archivo '{VENTAS_FILE_PATH}': {error}")
+             
+        if ventas_exitosas > 0:
+            st.toast(f"✅ {ventas_exitosas} ventas procesadas automáticamente desde '{VENTAS_FILE_PATH}'.", icon="💸")
+        if ventas_fallidas:
+            # Mostramos un resumen de los fallos solo al inicio
+            st.warning(f"⚠️ {len(ventas_fallidas)} ventas de '{VENTAS_FILE_PATH}' fallaron. Revise el stock/ID.")
+            
+    except FileNotFoundError:
+        # Es normal que no exista si no hay ventas masivas en este momento
+        pass
+    except Exception as e:
+        st.warning(f"No se pudo leer el archivo '{VENTAS_FILE_PATH}'. Asegúrese de que el formato (ID, Cantidad Vendida) sea correcto. Error: {e}")
+
 
 # --- NAVEGACIÓN EN EL SIDEBAR ---
 st.sidebar.header("Menú de Navegación")
@@ -117,6 +222,7 @@ except FileNotFoundError:
 
 # --- DASHBOARD (Mantenido) ---
 if ventana_seleccionada == 'Dashboard':
+    # ... (código Dashboard) ...
     df_inventario = st.session_state.df_inventario
     st.title("📦 Control de Inventario - Distribuidora Universal del Llano")
     st.header("📊 Dashboard de Inventario")
@@ -176,9 +282,9 @@ if ventana_seleccionada == 'Dashboard':
                                  title="Top 5 Compras (Unidades Compradas)", color='Producto', height=350)
             st.plotly_chart(fig_compras, use_container_width=True)
 
-
 # --- REGISTRO DE PRODUCTOS (Mantenido) ---
 elif ventana_seleccionada == 'Registro de Productos':
+    # ... (código Registro de Productos) ...
     df_inventario = st.session_state.df_inventario
     st.title("➕ Registro de Productos")
     st.header("Registro Manual de Productos")
@@ -244,8 +350,7 @@ elif ventana_seleccionada == 'Registro de Productos':
     st.subheader("Inventario Actual")
     st.dataframe(st.session_state.df_inventario, use_container_width=True)
 
-
-# --- REGISTRO DE VENTAS (MODIFICADO para Carga por Excel) ---
+# --- REGISTRO DE VENTAS (Mantenido el registro manual) ---
 elif ventana_seleccionada == 'Registro de Ventas':
     df_inventario = st.session_state.df_inventario
     st.title("💸 Registro de Ventas")
@@ -253,85 +358,9 @@ elif ventana_seleccionada == 'Registro de Ventas':
     if df_inventario.empty:
         st.info("No hay productos registrados. Por favor, añada productos desde 'Registro de Productos' para registrar ventas.")
     else:
-        st.header("Carga de Ventas Masiva (Excel)")
-        st.markdown("Sube un archivo `.xlsx` o `.csv` con **dos columnas** obligatorias:")
-        st.code("ID | Cantidad Vendida")
         
-        uploaded_file = st.file_uploader("Subir archivo de Ventas", type=['xlsx', 'csv'], key="ventas_uploader")
-
-        if uploaded_file:
-            try:
-                # 1. Leer el archivo
-                if uploaded_file.name.endswith('.csv'):
-                    df_ventas_new = pd.read_csv(uploaded_file)
-                else:
-                    df_ventas_new = pd.read_excel(uploaded_file)
-                
-                # 2. Estandarizar y validar columnas
-                df_ventas_new.columns = [col.strip().replace(' ', '_').upper() for col in df_ventas_new.columns]
-                
-                if 'ID' not in df_ventas_new.columns or 'CANTIDAD_VENDIDA' not in df_ventas_new.columns:
-                    st.error("Error: El archivo debe contener las columnas 'ID' y 'Cantidad Vendida' (o sus equivalentes).")
-                else:
-                    # Preparar los datos
-                    df_ventas_new['ID'] = df_ventas_new['ID'].astype(str).str.upper().str.strip()
-                    df_ventas_new['CANTIDAD_VENDIDA'] = pd.to_numeric(df_ventas_new['CANTIDAD_VENDIDA'], errors='coerce').fillna(0).astype(int)
-                    df_ventas_new = df_ventas_new[df_ventas_new['CANTIDAD_VENDIDA'] > 0]
-                    
-                    # 3. Procesar las ventas
-                    ventas_exitosas = 0
-                    ventas_fallidas = []
-                    nuevos_registros_historial = []
-
-                    df_inventario_temp = st.session_state.df_inventario.copy()
-                    
-                    for index, row in df_ventas_new.iterrows():
-                        product_id = row['ID']
-                        cantidad = row['CANTIDAD_VENDIDA']
-                        
-                        # Buscar el producto en el inventario principal
-                        match = df_inventario_temp[df_inventario_temp['ID'] == product_id]
-                        
-                        if not match.empty:
-                            idx = match.index[0]
-                            current_stock = df_inventario_temp.loc[idx, 'Stock']
-                            product_name = df_inventario_temp.loc[idx, 'Producto']
-                            
-                            if cantidad <= current_stock:
-                                # Actualizar inventario temporalmente
-                                df_inventario_temp.loc[idx, 'Stock'] -= cantidad
-                                df_inventario_temp.loc[idx, 'Ventas'] += cantidad
-                                
-                                # Registrar para historial
-                                nuevos_registros_historial.append({
-                                    'ID': product_id, 
-                                    'Producto': product_name, 
-                                    'Cantidad': cantidad
-                                })
-                                ventas_exitosas += 1
-                            else:
-                                ventas_fallidas.append(f"ID {product_id} ('{product_name}'): Cantidad ({cantidad}) excede el stock actual ({current_stock}).")
-                        else:
-                            ventas_fallidas.append(f"ID {product_id}: No encontrado en el inventario.")
-                            
-                    # 4. Aplicar cambios si hay ventas exitosas
-                    if ventas_exitosas > 0:
-                        st.session_state.df_inventario = df_inventario_temp
-                        df_hist_new = pd.DataFrame(nuevos_registros_historial)
-                        st.session_state.df_ventas_hist = pd.concat([st.session_state.df_ventas_hist, df_hist_new], ignore_index=True)
-                        st.success(f"✅ Se han registrado {ventas_exitosas} ventas del archivo con éxito.")
-
-                    if ventas_fallidas:
-                        st.warning(f"⚠️ Hubo {len(ventas_fallidas)} registros de ventas que fallaron:")
-                        for error_msg in ventas_fallidas:
-                            st.caption(f"- {error_msg}")
-                            
-            except Exception as e:
-                st.error(f"Error al procesar el archivo de ventas: {e}")
-                
-        
-        st.markdown("---")
         st.header("Registro de Venta Individual")
+        st.info("Nota: Las ventas masivas se cargan automáticamente al inicio desde el archivo 'ventas_mes.xlsx'.")
         
         # --- Formulario de Registro Individual (Mantenido) ---
         with st.form("registro_venta_form"):
@@ -396,6 +425,7 @@ elif ventana_seleccionada == 'Registro de Ventas':
 
 # --- REGISTRO DE COMPRAS (Mantenido) ---
 elif ventana_seleccionada == 'Registro de Compras':
+    # ... (código Registro de Compras) ...
     df_inventario = st.session_state.df_inventario
     st.title("🛒 Registro de Compras (Entradas)")
 
