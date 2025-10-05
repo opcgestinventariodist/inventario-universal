@@ -47,7 +47,10 @@ def add_product(new_id, new_category, new_name, new_presentation, new_stock):
 
 
 def process_sales_from_df(df_ventas_new):
-    """Procesa un DataFrame de ventas (carga masiva), actualiza el inventario y el historial."""
+    """
+    Procesa un DataFrame de ventas (carga masiva).
+    IMPORTANTE: Solo procesa IDs que existen en el inventario.
+    """
     
     # 1. Estandarizar y validar columnas
     df_ventas_new.columns = [clean_col_name(col) for col in df_ventas_new.columns]
@@ -73,14 +76,23 @@ def process_sales_from_df(df_ventas_new):
     if df_ventas_new.empty:
         return 0, [], "El archivo de ventas no contiene datos válidos."
 
-    # 3. Procesar las ventas
+    # --- 3. Filtro de ID Válidas (CORRECCIÓN CLAVE) ---
+    valid_ids = st.session_state.df_inventario['ID'].tolist()
+    
+    # Identificar IDs no válidas
+    invalid_sales_ids = df_ventas_new[~df_ventas_new['ID'].isin(valid_ids)]['ID'].unique()
+    ventas_fallidas = [f"ID {pid}: No encontrado en el inventario." for pid in invalid_sales_ids]
+    
+    # Filtrar solo las ventas con ID válida para el procesamiento
+    df_ventas_valid = df_ventas_new[df_ventas_new['ID'].isin(valid_ids)]
+    
+    # 4. Procesar las ventas
     ventas_exitosas = 0
-    ventas_fallidas = []
     nuevos_registros_historial = []
 
     df_inventario_temp = st.session_state.df_inventario.copy()
     
-    for index, row in df_ventas_new.iterrows():
+    for index, row in df_ventas_valid.iterrows():
         product_id = row['ID']
         cantidad = row['CANTIDAD_VENDIDA']
         
@@ -102,11 +114,8 @@ def process_sales_from_df(df_ventas_new):
             })
             ventas_exitosas += 1
             
-        else:
-            ventas_fallidas.append(f"ID {product_id}: No encontrado en el inventario.")
-            
-    # 4. Aplicar cambios al state si hubo éxito
-    if ventas_exitosas > 0:
+    # 5. Aplicar cambios al state si hubo éxito
+    if ventas_exitosas > 0 or not df_ventas_valid.empty: # Siempre actualizamos si procesamos o filtramos
         st.session_state.df_inventario = df_inventario_temp
         df_hist_new = pd.DataFrame(nuevos_registros_historial)
         # Se añade al historial de ventas y se CONSERVA
@@ -116,7 +125,10 @@ def process_sales_from_df(df_ventas_new):
 
 
 def process_purchases_from_df(df_compras_new):
-    """Procesa un DataFrame de compras (carga masiva), actualiza el inventario y el historial."""
+    """
+    Procesa un DataFrame de compras (carga masiva).
+    IMPORTANTE: Solo procesa IDs que existen en el inventario.
+    """
     
     # 1. Estandarizar y validar columnas
     df_compras_new.columns = [clean_col_name(col) for col in df_compras_new.columns]
@@ -142,14 +154,23 @@ def process_purchases_from_df(df_compras_new):
     if df_compras_new.empty:
         return 0, [], "El archivo de compras no contiene datos válidos."
 
-    # 3. Procesar las compras
+    # --- 3. Filtro de ID Válidas (CORRECCIÓN CLAVE) ---
+    valid_ids = st.session_state.df_inventario['ID'].tolist()
+    
+    # Identificar IDs no válidas
+    invalid_purchase_ids = df_compras_new[~df_compras_new['ID'].isin(valid_ids)]['ID'].unique()
+    compras_fallidas = [f"ID {pid}: No encontrado en el inventario." for pid in invalid_purchase_ids]
+    
+    # Filtrar solo las compras con ID válida para el procesamiento
+    df_compras_valid = df_compras_new[df_compras_new['ID'].isin(valid_ids)]
+
+    # 4. Procesar las compras
     compras_exitosas = 0
-    compras_fallidas = []
     nuevos_registros_historial = []
 
     df_inventario_temp = st.session_state.df_inventario.copy()
     
-    for index, row in df_compras_new.iterrows():
+    for index, row in df_compras_valid.iterrows():
         product_id = row['ID']
         cantidad = row['CANTIDAD_COMPRADA']
         
@@ -171,11 +192,8 @@ def process_purchases_from_df(df_compras_new):
             })
             compras_exitosas += 1
             
-        else:
-            compras_fallidas.append(f"ID {product_id}: No encontrado en el inventario.")
-            
-    # 4. Aplicar cambios al state si hubo éxito
-    if compras_exitosas > 0:
+    # 5. Aplicar cambios al state si hubo éxito
+    if compras_exitosas > 0 or not df_compras_valid.empty: # Siempre actualizamos si procesamos o filtramos
         st.session_state.df_inventario = df_inventario_temp
         df_hist_new = pd.DataFrame(nuevos_registros_historial)
         # Se añade al historial de compras y se CONSERVA
@@ -209,7 +227,7 @@ if 'df_inventario' not in st.session_state:
             'Stock': pd.to_numeric(df_inicial['STOCK_INICIAL'], errors='coerce').fillna(0).astype(int),
             'Categoría': df_inicial['CATEGORIA'], 
             'Presentación': df_inicial['PRESENTACION'],
-            'Ventas': 0, # Inicializados en 0, los movimientos se sumarán en pasos 2 y 3
+            'Ventas': 0, 
             'Compras': 0
         })
         
@@ -251,7 +269,7 @@ if not st.session_state.df_inventario.empty:
         if ventas_exitosas > 0:
             st.toast(f"✅ {ventas_exitosas} ventas procesadas automáticamente desde '{VENTAS_FILE_PATH}'.", icon="💸")
         if ventas_fallidas:
-            st.warning(f"⚠️ {len(ventas_fallidas)} ventas de '{VENTAS_FILE_PATH}' fallaron. Revise la ID de los productos faltantes.")
+            st.warning(f"⚠️ {len(ventas_fallidas)} ventas de '{VENTAS_FILE_PATH}' **FALLARON** porque el producto no existe en el inventario. Revise la ID de los productos: {', '.join([item.split(': ')[0].split(' ')[1] for item in ventas_fallidas])}")
             
     except FileNotFoundError:
         pass
@@ -278,7 +296,7 @@ if not st.session_state.df_inventario.empty:
         if compras_exitosas > 0:
             st.toast(f"✅ {compras_exitosas} compras procesadas automáticamente desde '{COMPRAS_FILE_PATH}'.", icon="🛒")
         if compras_fallidas:
-            st.warning(f"⚠️ {len(compras_fallidas)} compras de '{COMPRAS_FILE_PATH}' fallaron. Revise la ID de los productos faltantes.")
+             st.warning(f"⚠️ {len(compras_fallidas)} compras de '{COMPRAS_FILE_PATH}' **FALLARON** porque el producto no existe en el inventario. Revise la ID de los productos: {', '.join([item.split(': ')[0].split(' ')[1] for item in compras_fallidas])}")
             
     except FileNotFoundError:
         pass 
