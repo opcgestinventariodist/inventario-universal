@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from unidecode import unidecode # Necesitas añadir 'unidecode' a requirements.txt
+from unidecode import unidecode 
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
@@ -43,16 +43,10 @@ def add_product(new_id, new_category, new_name, new_presentation, new_stock):
 
 
 def process_sales_from_df(df_ventas_new):
-    """Procesa un DataFrame de ventas (con columnas ID y Cantidad Vendida) 
-    y actualiza el inventario y el historial.
-    """
+    """Procesa un DataFrame de ventas y actualiza el inventario y el historial, PERMITIENDO STOCK NEGATIVO."""
     
-    # 1. Estandarizar y validar columnas
     # Función de limpieza avanzada de nombres de columna
     def clean_col_name(col):
-        # 1. Quita tildes (usando unidecode)
-        # 2. Quita espacios y reemplaza por _
-        # 3. Convierte a mayúsculas
         return unidecode(col).strip().replace(' ', '_').upper()
 
     df_ventas_new.columns = [clean_col_name(col) for col in df_ventas_new.columns]
@@ -93,23 +87,20 @@ def process_sales_from_df(df_ventas_new):
         
         if not match.empty:
             idx = match.index[0]
-            current_stock = df_inventario_temp.loc[idx, 'Stock']
             product_name = df_inventario_temp.loc[idx, 'Producto']
             
-            if cantidad <= current_stock:
-                # Actualizar inventario temporalmente
-                df_inventario_temp.loc[idx, 'Stock'] -= cantidad
-                df_inventario_temp.loc[idx, 'Ventas'] += cantidad
-                
-                # Registrar para historial
-                nuevos_registros_historial.append({
-                    'ID': product_id, 
-                    'Producto': product_name, 
-                    'Cantidad': cantidad
-                })
-                ventas_exitosas += 1
-            else:
-                ventas_fallidas.append(f"ID {product_id} ('{product_name}'): Cantidad ({cantidad}) excede el stock actual ({current_stock}).")
+            # Se aplica la venta sin restricción (permite stock negativo)
+            df_inventario_temp.loc[idx, 'Stock'] -= cantidad
+            df_inventario_temp.loc[idx, 'Ventas'] += cantidad
+            
+            # Registrar para historial
+            nuevos_registros_historial.append({
+                'ID': product_id, 
+                'Producto': product_name, 
+                'Cantidad': cantidad
+            })
+            ventas_exitosas += 1
+            
         else:
             ventas_fallidas.append(f"ID {product_id}: No encontrado en el inventario.")
             
@@ -117,6 +108,7 @@ def process_sales_from_df(df_ventas_new):
     if ventas_exitosas > 0:
         st.session_state.df_inventario = df_inventario_temp
         df_hist_new = pd.DataFrame(nuevos_registros_historial)
+        # Se actualiza el historial AQUI. Esto se borrará en la lógica de inicialización.
         st.session_state.df_ventas_hist = pd.concat([st.session_state.df_ventas_hist, df_hist_new], ignore_index=True)
 
     return ventas_exitosas, ventas_fallidas, None
@@ -138,11 +130,10 @@ if 'df_inventario' not in st.session_state:
         else:
             df_inicial = pd.read_excel(INVENTARIO_FILE_PATH)
         
-        # Función de limpieza avanzada de nombres de columna (Copia de la anterior)
+        # Función de limpieza avanzada de nombres de columna
         def clean_col_name(col):
             return unidecode(col).strip().replace(' ', '_').upper()
 
-        # Aplicamos la limpieza que eliminará la tilde de "Categoría" -> "CATEGORIA"
         df_inicial.columns = [clean_col_name(col) for col in df_inicial.columns]
         
         # 1. Inicializar el inventario base
@@ -150,7 +141,7 @@ if 'df_inventario' not in st.session_state:
             'ID': df_inicial['ID'].astype(str).str.upper().str.strip(),
             'Producto': df_inicial['PRODUCTO'],
             'Stock': pd.to_numeric(df_inicial['STOCK_INICIAL'], errors='coerce').fillna(0).astype(int),
-            'Categoría': df_inicial['CATEGORIA'], # Ahora busca CATEGORIA, que será el resultado de la limpieza
+            'Categoría': df_inicial['CATEGORIA'], 
             'Presentación': df_inicial['PRESENTACION'],
             'Ventas': 0,
             'Compras': 0
@@ -187,17 +178,21 @@ if not st.session_state.df_inventario.empty:
         else:
             df_ventas_github = pd.read_excel(VENTAS_FILE_PATH)
             
-        # Llama a la función de procesamiento
+        # Llama a la función de procesamiento (Aplica al stock y guarda el historial)
         ventas_exitosas, ventas_fallidas, error = process_sales_from_df(df_ventas_github)
         
+        # 🚨 MODIFICACIÓN CLAVE: BORRAR EL HISTORIAL INMEDIATAMENTE DESPUÉS DE LA CARGA MASIVA
+        if ventas_exitosas > 0:
+            st.session_state.df_ventas_hist = pd.DataFrame(columns=['ID', 'Producto', 'Cantidad'])
+            
         if error:
              st.warning(f"Error en el archivo '{VENTAS_FILE_PATH}': {error}")
              
         if ventas_exitosas > 0:
             st.toast(f"✅ {ventas_exitosas} ventas procesadas automáticamente desde '{VENTAS_FILE_PATH}'.", icon="💸")
         if ventas_fallidas:
-            # Mostramos un resumen de los fallos solo al inicio
-            st.warning(f"⚠️ {len(ventas_fallidas)} ventas de '{VENTAS_FILE_PATH}' fallaron. Revise el stock/ID.")
+            # Mostramos un resumen de los fallos (solo los productos con ID no encontrada)
+            st.warning(f"⚠️ {len(ventas_fallidas)} ventas de '{VENTAS_FILE_PATH}' fallaron. Revise la ID, ya que el stock negativo está permitido.")
             
     except FileNotFoundError:
         # Es normal que no exista si no hay ventas masivas en este momento
@@ -207,11 +202,7 @@ if not st.session_state.df_inventario.empty:
 
 
 # --- NAVEGACIÓN EN EL SIDEBAR ---
-st.sidebar.header("Menú de Navegación")
-ventana_seleccionada = st.sidebar.radio(
-    "Selecciona una ventana:",
-    ('Dashboard', 'Registro de Productos', 'Registro de Ventas', 'Registro de Compras')
-)
+# ... (El resto del código permanece igual) ...
 
 # -------------------------------------------------------------------------
 # CÓDIGO PARA MOSTRAR LA IMAGEN EN EL SIDEBAR
@@ -242,6 +233,7 @@ if ventana_seleccionada == 'Dashboard':
         # Cálculo de KPIs
         total_productos_unicos = df_inventario['Producto'].nunique()
         total_unidades_stock = df_inventario['Stock'].astype(int).sum()
+        # El cálculo de bajo stock ahora incluye negativos
         productos_bajo_stock = df_inventario[df_inventario['Stock'].astype(int) <= 10].shape[0]
 
         # Mostrar KPIs
@@ -312,7 +304,7 @@ elif ventana_seleccionada == 'Registro de Productos':
             presentacion = st.selectbox("Presentación", options=PRESENTACION_OPCIONES, key="presentation_manual_input")
 
         # Campo Stock Inicial (Control numérico)
-        stock_inicial = st.number_input("Stock Inicial", min_value=0, value=0, step=1, key="stock_manual_input")
+        stock_inicial = st.number_input("Stock Inicial", value=0, step=1, key="stock_manual_input")
 
         submit_button = st.form_submit_button("Añadir Producto Manualmente")
         
@@ -358,7 +350,7 @@ elif ventana_seleccionada == 'Registro de Productos':
     st.subheader("Inventario Actual")
     st.dataframe(st.session_state.df_inventario, use_container_width=True)
 
-# --- REGISTRO DE VENTAS (Mantenido el registro manual) ---
+# --- REGISTRO DE VENTAS (MODIFICADO para stock negativo) ---
 elif ventana_seleccionada == 'Registro de Ventas':
     df_inventario = st.session_state.df_inventario
     st.title("💸 Registro de Ventas")
@@ -368,9 +360,9 @@ elif ventana_seleccionada == 'Registro de Ventas':
     else:
         
         st.header("Registro de Venta Individual")
-        st.info("Nota: Las ventas masivas se cargan automáticamente al inicio desde el archivo 'ventas_mes1.xlsx'.")
+        st.info("Nota: Las ventas masivas se cargan automáticamente al inicio. El stock negativo está permitido.")
         
-        # --- Formulario de Registro Individual (Mantenido) ---
+        # --- Formulario de Registro Individual ---
         with st.form("registro_venta_form"):
             
             # 1. Selección de Producto
@@ -389,16 +381,15 @@ elif ventana_seleccionada == 'Registro de Ventas':
             st.markdown("---")
             col_left, col_right = st.columns(2)
             
-            # 2. Cantidad Vendida
+            # 2. Cantidad Vendida (NO tiene restricción de stock máximo)
             with col_left:
                 cantidad_vendida = st.number_input(
                     "Cantidad Vendida",
                     min_value=1, 
-                    max_value=current_stock if current_stock > 0 else 0,
-                    value=1 if current_stock > 0 else 0, 
+                    value=1, 
                     step=1,
                     key="cantidad_vendida_input",
-                    help="La cantidad máxima es el stock actual."
+                    help="Si la cantidad es mayor al stock actual, el stock se volverá negativo."
                 )
             
             # 3. Mostrar Presentación y Stock Actual
@@ -410,24 +401,28 @@ elif ventana_seleccionada == 'Registro de Ventas':
 
             if submit_button:
                 if cantidad_vendida > 0:
-                    if cantidad_vendida <= current_stock:
-                        idx = df_inventario[df_inventario['Producto'] == selected_product_name].index[0]
-                        
-                        st.session_state.df_inventario.loc[idx, 'Stock'] -= cantidad_vendida
-                        st.session_state.df_inventario.loc[idx, 'Ventas'] += cantidad_vendida
+                    idx = df_inventario[df_inventario['Producto'] == selected_product_name].index[0]
+                    
+                    # El código aplica la venta sin verificar stock
+                    st.session_state.df_inventario.loc[idx, 'Stock'] -= cantidad_vendida
+                    st.session_state.df_inventario.loc[idx, 'Ventas'] += cantidad_vendida
 
-                        new_venta = pd.DataFrame([{'ID': product_id, 'Producto': selected_product_name, 'Cantidad': cantidad_vendida}])
-                        st.session_state.df_ventas_hist = pd.concat([st.session_state.df_ventas_hist, new_venta], ignore_index=True)
-                        
-                        st.success(f"Venta de {cantidad_vendida} unidades de '{selected_product_name}' registrada con éxito. Nuevo stock: {st.session_state.df_inventario.loc[idx, 'Stock']}")
-                        st.rerun() 
+                    new_venta = pd.DataFrame([{'ID': product_id, 'Producto': selected_product_name, 'Cantidad': cantidad_vendida}])
+                    # Las ventas manuales SIEMPRE se añaden al historial
+                    st.session_state.df_ventas_hist = pd.concat([st.session_state.df_ventas_hist, new_venta], ignore_index=True)
+                    
+                    new_stock = st.session_state.df_inventario.loc[idx, 'Stock']
+                    if new_stock < 0:
+                        st.warning(f"⚠️ Venta de {cantidad_vendida} unidades registrada. El stock es NEGATIVO: {new_stock}")
                     else:
-                        st.error(f"Error: La cantidad vendida ({cantidad_vendida}) excede el stock actual ({current_stock}).")
+                         st.success(f"Venta de {cantidad_vendida} unidades registrada. Nuevo stock: {new_stock}")
+                    st.rerun() 
                 else:
                     st.warning("La cantidad vendida debe ser mayor a cero.")
 
         st.markdown("---")
         st.subheader("Historial de Ventas")
+        # Esta tabla ahora solo mostrará las ventas registradas manualmente
         st.dataframe(st.session_state.df_ventas_hist, use_container_width=True)
 
 
