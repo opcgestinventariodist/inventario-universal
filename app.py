@@ -49,7 +49,6 @@ def process_sales_from_df(df_ventas_new):
     """
     
     # 1. Estandarizar y validar columnas
-    # Intentamos encontrar las columnas necesarias, asumiendo que el DF de entrada tiene 'ID' y 'Cantidad Vendida'
     df_ventas_new.columns = [col.strip().replace(' ', '_').upper() for col in df_ventas_new.columns]
 
     if 'ID' not in df_ventas_new.columns:
@@ -155,7 +154,7 @@ if 'df_inventario' not in st.session_state:
         st.warning("No se encontró 'inventario_inicial.xlsx'. Iniciando con inventario vacío.")
         
     except Exception as e:
-        st.error(f"Error al cargar el archivo de inventario: {e}")
+        st.error(f"Error al cargar el archivo de inventario. Revise el formato y el error: {e}")
         st.session_state.df_inventario = df_inventario_vacio
 
 # Historial de registros (SIN FECHA)
@@ -166,11 +165,13 @@ if 'df_compras_hist' not in st.session_state:
     st.session_state.df_compras_hist = pd.DataFrame(columns=['ID', 'Producto', 'Cantidad'])
 
 
-# === 2. LÓGICA DE CARGA AUTOMÁTICA DE VENTAS DE MOVIMIENTO (después de cargar el inventario) ===
+# === 2. LÓGICA DE CARGA AUTOMÁTICA DE VENTAS DE MOVIMIENTO ===
 if not st.session_state.df_inventario.empty:
+    
+    # 🚨 ¡MODIFICACIÓN CLAVE AQUÍ! 🚨
+    VENTAS_FILE_PATH = 'ventas_mes1.xlsx' 
+    
     try:
-        VENTAS_FILE_PATH = 'ventas_mes.xlsx' 
-        
         # Leemos el archivo de ventas
         if VENTAS_FILE_PATH.endswith('.csv'):
             df_ventas_github = pd.read_csv(VENTAS_FILE_PATH)
@@ -194,6 +195,22 @@ if not st.session_state.df_inventario.empty:
         pass
     except Exception as e:
         st.warning(f"No se pudo leer el archivo '{VENTAS_FILE_PATH}'. Asegúrese de que el formato (ID, Cantidad Vendida) sea correcto. Error: {e}")
+
+
+# --- FUNCIÓN PARA AÑADIR PRODUCTO (Registro Manual) ---
+def add_product(new_id, new_category, new_name, new_presentation, new_stock):
+    """Añade un nuevo producto al DataFrame de inventario."""
+    new_row = pd.DataFrame([{
+        'ID': new_id,
+        'Producto': new_name,
+        'Stock': new_stock,
+        'Categoría': new_category,
+        'Presentación': new_presentation,
+        'Ventas': 0,
+        'Compras': 0
+    }])
+    st.session_state.df_inventario = pd.concat([st.session_state.df_inventario, new_row], ignore_index=True)
+    st.success(f"Producto '{new_name}' (ID: {new_id}) añadido con éxito!")
 
 
 # --- NAVEGACIÓN EN EL SIDEBAR ---
@@ -222,7 +239,6 @@ except FileNotFoundError:
 
 # --- DASHBOARD (Mantenido) ---
 if ventana_seleccionada == 'Dashboard':
-    # ... (código Dashboard) ...
     df_inventario = st.session_state.df_inventario
     st.title("📦 Control de Inventario - Distribuidora Universal del Llano")
     st.header("📊 Dashboard de Inventario")
@@ -284,7 +300,6 @@ if ventana_seleccionada == 'Dashboard':
 
 # --- REGISTRO DE PRODUCTOS (Mantenido) ---
 elif ventana_seleccionada == 'Registro de Productos':
-    # ... (código Registro de Productos) ...
     df_inventario = st.session_state.df_inventario
     st.title("➕ Registro de Productos")
     st.header("Registro Manual de Productos")
@@ -360,7 +375,7 @@ elif ventana_seleccionada == 'Registro de Ventas':
     else:
         
         st.header("Registro de Venta Individual")
-        st.info("Nota: Las ventas masivas se cargan automáticamente al inicio desde el archivo 'ventas_mes.xlsx'.")
+        st.info("Nota: Las ventas masivas se cargan automáticamente al inicio desde el archivo 'ventas_mes1.xlsx'.")
         
         # --- Formulario de Registro Individual (Mantenido) ---
         with st.form("registro_venta_form"):
@@ -425,7 +440,6 @@ elif ventana_seleccionada == 'Registro de Ventas':
 
 # --- REGISTRO DE COMPRAS (Mantenido) ---
 elif ventana_seleccionada == 'Registro de Compras':
-    # ... (código Registro de Compras) ...
     df_inventario = st.session_state.df_inventario
     st.title("🛒 Registro de Compras (Entradas)")
 
