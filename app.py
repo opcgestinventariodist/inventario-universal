@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+from unidecode import unidecode # Necesitas añadir 'unidecode' a requirements.txt
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
@@ -47,7 +48,14 @@ def process_sales_from_df(df_ventas_new):
     """
     
     # 1. Estandarizar y validar columnas
-    df_ventas_new.columns = [col.strip().replace(' ', '_').upper() for col in df_ventas_new.columns]
+    # Función de limpieza avanzada de nombres de columna
+    def clean_col_name(col):
+        # 1. Quita tildes (usando unidecode)
+        # 2. Quita espacios y reemplaza por _
+        # 3. Convierte a mayúsculas
+        return unidecode(col).strip().replace(' ', '_').upper()
+
+    df_ventas_new.columns = [clean_col_name(col) for col in df_ventas_new.columns]
 
     if 'ID' not in df_ventas_new.columns:
         return 0, [], "Columna 'ID' faltante."
@@ -129,16 +137,20 @@ if 'df_inventario' not in st.session_state:
             df_inicial = pd.read_csv(INVENTARIO_FILE_PATH)
         else:
             df_inicial = pd.read_excel(INVENTARIO_FILE_PATH)
-            
-        # Nombres de columna estandarizados para la inicialización
-        df_inicial.columns = df_inicial.columns.str.strip().str.replace(' ', '_').str.upper()
+        
+        # Función de limpieza avanzada de nombres de columna (Copia de la anterior)
+        def clean_col_name(col):
+            return unidecode(col).strip().replace(' ', '_').upper()
+
+        # Aplicamos la limpieza que eliminará la tilde de "Categoría" -> "CATEGORIA"
+        df_inicial.columns = [clean_col_name(col) for col in df_inicial.columns]
         
         # 1. Inicializar el inventario base
         df_cargado = pd.DataFrame({
             'ID': df_inicial['ID'].astype(str).str.upper().str.strip(),
             'Producto': df_inicial['PRODUCTO'],
             'Stock': pd.to_numeric(df_inicial['STOCK_INICIAL'], errors='coerce').fillna(0).astype(int),
-            'Categoría': df_inicial['CATEGORIA'],
+            'Categoría': df_inicial['CATEGORIA'], # Ahora busca CATEGORIA, que será el resultado de la limpieza
             'Presentación': df_inicial['PRESENTACION'],
             'Ventas': 0,
             'Compras': 0
