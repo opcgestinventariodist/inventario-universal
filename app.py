@@ -299,7 +299,6 @@ ventana_seleccionada = st.sidebar.radio(
 # -------------------------------------------------------------------------
 st.sidebar.markdown("---") 
 try:
-    # Usando una imagen genérica para el logo si el archivo no está
     st.sidebar.image(
         "logo_empresa.png", 
         caption="Distribuidora Universal del Llano" 
@@ -586,26 +585,14 @@ elif ventana_seleccionada == 'Registro de Compras':
         st.dataframe(st.session_state.df_compras_hist, use_container_width=True)
 
 # ----------------------------------------------------
-# 5. CARGA DE MOVIMIENTOS (MASIVA) - NO SE MUESTRA EN MENÚ
+# SECCIONES ELIMINADAS DEL MENÚ (CÓDIGO COMENTADO)
 # ----------------------------------------------------
 # elif ventana_seleccionada == 'Carga de Movimientos':
 #     st.title("⬆️ Carga Masiva de Movimientos")
 #     st.info("Esta ventana no está activa en el menú de navegación.")
-
-# ----------------------------------------------------
-# 6. REPORTES Y DESCARGA - NO SE MUESTRA EN MENÚ
-# ----------------------------------------------------
 # elif ventana_seleccionada == 'Reportes y Descarga':
 #     st.title("⬇️ Reportes y Descarga de Datos")
 #     st.info("Esta ventana no está activa en el menú de navegación.")
-#     # ... (Aquí iría la lógica completa de Reportes y Descarga) ...
-#     # NOTE: He comentado esta sección para cumplir con la solicitud de reducir el menú. 
-
-# ----------------------------------------------------
-# 7. CONFIGURACIÓN - NO SE MUESTRA EN MENÚ
-# ----------------------------------------------------
 # elif ventana_seleccionada == 'Configuración':
 #     st.title("⚙️ Configuración")
 #     st.info("Esta ventana no está activa en el menú de navegación.")
-#     # ... (Aquí iría la lógica completa de Configuración) ...
-#     # NOTE: He comentado esta sección para cumplir con la solicitud de reducir el menú.
