@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from unidecode import unidecode # Necesita estar en requirements.txt
+from unidecode import unidecode 
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
@@ -128,7 +128,6 @@ if 'df_inventario' not in st.session_state:
         if INVENTARIO_FILE_PATH.endswith('.csv'):
             df_inicial = pd.read_csv(INVENTARIO_FILE_PATH)
         else:
-            # openpyxl es necesario aquí
             df_inicial = pd.read_excel(INVENTARIO_FILE_PATH) 
         
         # Aplicamos la limpieza que eliminará la tilde de "Categoría" -> "CATEGORIA"
@@ -153,7 +152,6 @@ if 'df_inventario' not in st.session_state:
         st.warning("No se encontró 'inventario_inicial.xlsx'. Iniciando con inventario vacío.")
         
     except Exception as e:
-        # Muestra el error de openpyxl aquí si no está instalado
         st.error(f"Error al cargar el archivo de inventario. Revise el formato y el error: {e}")
         st.session_state.df_inventario = df_inventario_vacio
 
@@ -180,10 +178,7 @@ if not st.session_state.df_inventario.empty:
         # Llama a la función de procesamiento (Aplica al stock y guarda el historial)
         ventas_exitosas, ventas_fallidas, error = process_sales_from_df(df_ventas_github)
         
-        # 🚨 MODIFICACIÓN CLAVE: BORRAR EL HISTORIAL INMEDIATAMENTE DESPUÉS DE LA CARGA MASIVA
-        # Esto asegura que solo las ventas manuales posteriores se muestren en el historial.
-        if ventas_exitosas > 0:
-            st.session_state.df_ventas_hist = pd.DataFrame(columns=['ID', 'Producto', 'Cantidad'])
+        # 🚨 ANTES: Aquí se borraba el historial. AHORA: Se deja para que se muestren las ventas.
         
         if error:
              st.warning(f"Error en el archivo '{VENTAS_FILE_PATH}': {error}")
@@ -191,11 +186,9 @@ if not st.session_state.df_inventario.empty:
         if ventas_exitosas > 0:
             st.toast(f"✅ {ventas_exitosas} ventas procesadas automáticamente desde '{VENTAS_FILE_PATH}'.", icon="💸")
         if ventas_fallidas:
-            # El único fallo ahora debe ser el ID no encontrado, ya que el stock negativo está permitido.
             st.warning(f"⚠️ {len(ventas_fallidas)} ventas de '{VENTAS_FILE_PATH}' fallaron. Revise la ID de los productos faltantes.")
             
     except FileNotFoundError:
-        # Es normal que no exista si no hay ventas masivas en este momento
         pass
     except Exception as e:
         st.warning(f"No se pudo leer el archivo '{VENTAS_FILE_PATH}'. Asegúrese de que el formato (ID, Cantidad Vendida) sea correcto. Error: {e}")
@@ -203,7 +196,6 @@ if not st.session_state.df_inventario.empty:
 
 # --- NAVEGACIÓN EN EL SIDEBAR ---
 st.sidebar.header("Menú de Navegación")
-# La variable 'ventana_seleccionada' se define aquí
 ventana_seleccionada = st.sidebar.radio( 
     "Selecciona una ventana:",
     ('Dashboard', 'Registro de Productos', 'Registro de Ventas', 'Registro de Compras')
@@ -412,7 +404,7 @@ elif ventana_seleccionada == 'Registro de Ventas':
                     st.session_state.df_inventario.loc[idx, 'Ventas'] += cantidad_vendida
 
                     new_venta = pd.DataFrame([{'ID': product_id, 'Producto': selected_product_name, 'Cantidad': cantidad_vendida}])
-                    # Las ventas manuales SIEMPRE se añaden al historial
+                    # Las ventas (manuales y masivas) se añaden al historial
                     st.session_state.df_ventas_hist = pd.concat([st.session_state.df_ventas_hist, new_venta], ignore_index=True)
                     
                     new_stock = st.session_state.df_inventario.loc[idx, 'Stock']
@@ -426,7 +418,7 @@ elif ventana_seleccionada == 'Registro de Ventas':
 
         st.markdown("---")
         st.subheader("Historial de Ventas")
-        # Esta tabla ahora solo mostrará las ventas registradas manualmente (porque se borró en la inicialización)
+        # Esta tabla ahora muestra todas las ventas
         st.dataframe(st.session_state.df_ventas_hist, use_container_width=True)
 
 
