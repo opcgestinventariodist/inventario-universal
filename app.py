@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
@@ -12,22 +11,72 @@ st.set_page_config(
 )
 
 # Definición de las opciones de Presentación
-PRESENTACION_OPCIONES = ['Caja', 'Bulto', 'Libra', 'Kilo', 'Unidad', 'Litro', 'Paquete', 'Frasco']
+PRESENTACION_OPCIONES = ['libra', 'kilogramo', 'litro', 'paquete', 'unidad']
+
+# === CAMBIO CLAVE: NUEVA LISTA DE 9 CATEGORÍAS ===
+CATEGORIA_OPCIONES = [
+    'Harinas',
+    'Margarinas',
+    'Embutidos',
+    'Esencias y colorantes',
+    'Salsas y conservas',
+    'Varios y acompañantes, Panadería y pastelería', # Categoría fusionada
+    'Lácteos',
+    'Desechables',
+    'Moldes, motivos y utensilios'
+]
+# ===============================================
 
 # --- INICIALIZACIÓN DE DATOS (DataFrame Vacío y Persistencia) ---
+
+# Inventario principal
 if 'df_inventario' not in st.session_state:
     columnas = ['ID', 'Producto', 'Stock', 'Categoría', 'Presentación', 'Ventas', 'Compras']
-    st.session_state.df_inventario = pd.DataFrame(columns=columnas)
+    df_inventario_vacio = pd.DataFrame(columns=columnas)
+    
+    # === LÓGICA DE CARGA AUTOMÁTICA DEL ARCHIVO INICIAL (Invisible) ===
+    try:
+        # Intenta leer el archivo (ajústalo si usas CSV en lugar de XLSX)
+        archivo_path = 'inventario_inicial.xlsx' 
+        
+        if archivo_path.endswith('.csv'):
+            df_inicial = pd.read_csv(archivo_path)
+        else:
+            df_inicial = pd.read_excel(archivo_path)
+            
+        # Asegurarse de que las columnas coincidan
+        df_inicial.columns = ['ID', 'Producto', 'Stock Inicial', 'Categoría', 'Presentación']
+        
+        # Preparar los datos para el DataFrame de la aplicación
+        df_cargado = pd.DataFrame({
+            'ID': df_inicial['ID'].astype(str).str.upper().str.strip(),
+            'Producto': df_inicial['Producto'],
+            'Stock': pd.to_numeric(df_inicial['Stock Inicial'], errors='coerce').fillna(0).astype(int),
+            'Categoría': df_inicial['Categoría'],
+            'Presentación': df_inicial['Presentación'],
+            'Ventas': 0,
+            'Compras': 0
+        })
+        
+        st.session_state.df_inventario = df_cargado
+        st.toast("✅ Inventario inicial cargado desde archivo.", icon="📦")
+        
+    except FileNotFoundError:
+        st.session_state.df_inventario = df_inventario_vacio
+        
+    except Exception as e:
+        st.error(f"Error al cargar el archivo inicial. Revise el formato (ID, Producto, Stock Inicial, Categoría, Presentación). Error: {e}")
+        st.session_state.df_inventario = df_inventario_vacio
 
-# Inicialización de registros de movimientos
+# Historial de registros (SIN FECHA)
 if 'df_ventas_hist' not in st.session_state:
-    st.session_state.df_ventas_hist = pd.DataFrame(columns=['Fecha', 'Mes', 'ID', 'Producto', 'Cantidad'])
+    st.session_state.df_ventas_hist = pd.DataFrame(columns=['ID', 'Producto', 'Cantidad'])
 
 if 'df_compras_hist' not in st.session_state:
-    st.session_state.df_compras_hist = pd.DataFrame(columns=['Fecha', 'Mes', 'ID', 'Producto', 'Cantidad'])
+    st.session_state.df_compras_hist = pd.DataFrame(columns=['ID', 'Producto', 'Cantidad'])
 
 
-# --- FUNCIÓN PARA AÑADIR PRODUCTO ---
+# --- FUNCIÓN PARA AÑADIR PRODUCTO (Registro Manual) ---
 def add_product(new_id, new_category, new_name, new_presentation, new_stock):
     """Añade un nuevo producto al DataFrame de inventario."""
     new_row = pd.DataFrame([{
@@ -67,7 +116,7 @@ except FileNotFoundError:
 # --- ESTRUCTURA DE LA APLICACIÓN ---
 # ----------------------------------------------------
 
-# --- DASHBOARD (El código se mantiene igual, adaptado a los datos) ---
+# --- DASHBOARD (Mantenido) ---
 if ventana_seleccionada == 'Dashboard':
     df_inventario = st.session_state.df_inventario
     st.title("📦 Control de Inventario - Distribuidora Universal del Llano")
@@ -76,20 +125,22 @@ if ventana_seleccionada == 'Dashboard':
     if df_inventario.empty:
         st.info("No hay productos en el inventario. Añada productos desde 'Registro de Productos' para ver el Dashboard.")
     else:
-        # Lógica de Dashboard (KPIs y Gráficos) - (Mantenida del código anterior)
+        # Cálculo de KPIs
         total_productos_unicos = df_inventario['Producto'].nunique()
         total_unidades_stock = df_inventario['Stock'].astype(int).sum()
         productos_bajo_stock = df_inventario[df_inventario['Stock'].astype(int) <= 10].shape[0]
-        
+
+        # Mostrar KPIs
         st.subheader("Indicadores Clave (KPIs)")
         col1, col2, col3 = st.columns(3)
         with col1: st.metric("Total de Productos Únicos", f"{total_productos_unicos}")
         with col2: st.metric("Total de Unidades en Stock", f"{total_unidades_stock}")
         with col3: st.metric("Productos con Bajo Stock (<=10)", f"{productos_bajo_stock}")
-        st.markdown("---") 
 
+        st.markdown("---") 
         st.subheader("Visualizaciones")
         viz_col1, viz_col2 = st.columns(2)
+
         # Gráfico 1: Niveles de Stock por Producto
         with viz_col1:
             st.markdown("##### Niveles de Stock por Producto")
@@ -105,11 +156,11 @@ if ventana_seleccionada == 'Dashboard':
             fig_categoria = px.pie(df_categoria, names='Categoría', values='Count', 
                                    title='Productos por Categoría', height=350)
             st.plotly_chart(fig_categoria, use_container_width=True)
-        st.markdown("---") 
 
-        # Análisis de Movimientos (Ventas y Compras)
+        st.markdown("---") 
         st.subheader("Análisis de Movimientos")
         mov_col1, mov_col2 = st.columns(2)
+
         # Gráfico 3: Top Productos Más Vendidos
         with mov_col1:
             st.markdown("##### Top 5 Productos Más Vendidos")
@@ -127,31 +178,31 @@ if ventana_seleccionada == 'Dashboard':
             st.plotly_chart(fig_compras, use_container_width=True)
 
 
-# --- REGISTRO DE PRODUCTOS (Actualizado con SelectBox) ---
+# --- REGISTRO DE PRODUCTOS (Actualizado con SelectBox para Categoría) ---
 elif ventana_seleccionada == 'Registro de Productos':
     st.title("➕ Registro de Productos")
-    st.header("Ingresa los datos del nuevo producto:")
+    st.header("Registro Manual de Productos")
 
-    # --- 1. FORMULARIO DE INGRESO ---
+    # --- 1. FORMULARIO DE INGRESO MANUAL ---
     with st.form("registro_producto_form"):
         col_left, col_right = st.columns(2)
 
         # Columna Izquierda
         with col_left:
-            id_producto = st.text_input("Identificador del Producto (ID)", key="id_input")
-            nombre_producto = st.text_input("Nombre del Producto", key="name_input")
+            id_producto = st.text_input("Identificador del Producto (ID)", key="id_manual_input")
+            nombre_producto = st.text_input("Nombre del Producto", key="name_manual_input")
         
-        # Columna Derecha (Presentación ahora es un selectbox)
+        # Columna Derecha
         with col_right:
-            categoria = st.text_input("Categoría", key="category_input")
-            # --- CAMBIO CLAVE: SELECTBOX PARA PRESENTACIÓN ---
-            presentacion = st.selectbox("Presentación", options=PRESENTACION_OPCIONES, key="presentation_input")
-            # ------------------------------------------------
+            # Selecciona la Categoría
+            categoria = st.selectbox("Categoría", options=CATEGORIA_OPCIONES, key="category_manual_input")
+            # Selecciona la Presentación
+            presentacion = st.selectbox("Presentación", options=PRESENTACION_OPCIONES, key="presentation_manual_input")
 
         # Campo Stock Inicial (Control numérico)
-        stock_inicial = st.number_input("Stock Inicial", min_value=0, value=0, step=1, key="stock_input")
+        stock_inicial = st.number_input("Stock Inicial", min_value=0, value=0, step=1, key="stock_manual_input")
 
-        submit_button = st.form_submit_button("Añadir Producto")
+        submit_button = st.form_submit_button("Añadir Producto Manualmente")
         
         # Lógica al enviar el formulario
         if submit_button:
@@ -171,6 +222,7 @@ elif ventana_seleccionada == 'Registro de Productos':
         st.info("Aún no hay productos registrados para gestionar o eliminar.")
     else:
         df_inventario_actual = st.session_state.df_inventario.copy()
+
         productos_a_eliminar = st.multiselect(
             "Selecciona los IDs de los productos que deseas eliminar:",
             options=df_inventario_actual['ID'].tolist(),
@@ -195,7 +247,7 @@ elif ventana_seleccionada == 'Registro de Productos':
     st.dataframe(st.session_state.df_inventario, use_container_width=True)
 
 
-# --- REGISTRO DE VENTAS (Implementación con campo Mes) ---
+# --- REGISTRO DE VENTAS (Mantenido) ---
 elif ventana_seleccionada == 'Registro de Ventas':
     df_inventario = st.session_state.df_inventario
     st.title("💸 Registro de Ventas")
@@ -214,10 +266,6 @@ elif ventana_seleccionada == 'Registro de Ventas':
                 key="venta_product_select"
             )
             
-            # 2. Selección de Mes
-            mes_actual = datetime.now().strftime('%Y-%m')
-            mes_venta = st.text_input("Mes de la Venta (AAAA-MM)", value=mes_actual, key="mes_venta_input")
-
             producto_data = df_inventario[df_inventario['Producto'] == selected_product_name].iloc[0]
             current_stock = int(producto_data['Stock'])
             presentation = producto_data['Presentación']
@@ -226,7 +274,7 @@ elif ventana_seleccionada == 'Registro de Ventas':
             st.markdown("---")
             col_left, col_right = st.columns(2)
             
-            # 3. Cantidad Vendida
+            # 2. Cantidad Vendida
             with col_left:
                 cantidad_vendida = st.number_input(
                     "Cantidad Vendida",
@@ -238,7 +286,7 @@ elif ventana_seleccionada == 'Registro de Ventas':
                     help="La cantidad máxima es el stock actual."
                 )
             
-            # 4. Mostrar Presentación y Stock Actual
+            # 3. Mostrar Presentación y Stock Actual
             with col_right:
                 st.markdown(f"**Presentación:** `{presentation}`")
                 st.markdown(f"**Stock Actual:** `{current_stock}`")
@@ -250,21 +298,13 @@ elif ventana_seleccionada == 'Registro de Ventas':
                     if cantidad_vendida <= current_stock:
                         idx = df_inventario[df_inventario['Producto'] == selected_product_name].index[0]
                         
-                        # Actualizar Stock y Ventas en inventario principal
                         st.session_state.df_inventario.loc[idx, 'Stock'] -= cantidad_vendida
                         st.session_state.df_inventario.loc[idx, 'Ventas'] += cantidad_vendida
 
-                        # Registrar el movimiento en el historial de ventas
-                        new_venta = pd.DataFrame([{
-                            'Fecha': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                            'Mes': mes_venta,
-                            'ID': product_id,
-                            'Producto': selected_product_name,
-                            'Cantidad': cantidad_vendida
-                        }])
+                        new_venta = pd.DataFrame([{'ID': product_id, 'Producto': selected_product_name, 'Cantidad': cantidad_vendida}])
                         st.session_state.df_ventas_hist = pd.concat([st.session_state.df_ventas_hist, new_venta], ignore_index=True)
                         
-                        st.success(f"Venta de {cantidad_vendida} unidades de '{selected_product_name}' registrada. Nuevo stock: {st.session_state.df_inventario.loc[idx, 'Stock']}")
+                        st.success(f"Venta de {cantidad_vendida} unidades de '{selected_product_name}' registrada con éxito. Nuevo stock: {st.session_state.df_inventario.loc[idx, 'Stock']}")
                         st.rerun() 
                     else:
                         st.error(f"Error: La cantidad vendida ({cantidad_vendida}) excede el stock actual ({current_stock}).")
@@ -273,10 +313,10 @@ elif ventana_seleccionada == 'Registro de Ventas':
 
         st.markdown("---")
         st.subheader("Historial de Ventas")
-        st.dataframe(st.session_state.df_ventas_hist.sort_values(by='Fecha', ascending=False), use_container_width=True)
+        st.dataframe(st.session_state.df_ventas_hist, use_container_width=True)
 
 
-# --- REGISTRO DE COMPRAS (IMPLEMENTACIÓN REAL) ---
+# --- REGISTRO DE COMPRAS (Mantenido) ---
 elif ventana_seleccionada == 'Registro de Compras':
     df_inventario = st.session_state.df_inventario
     st.title("🛒 Registro de Compras (Entradas)")
@@ -295,10 +335,6 @@ elif ventana_seleccionada == 'Registro de Compras':
                 key="compra_product_select"
             )
             
-            # 2. Selección de Mes
-            mes_actual = datetime.now().strftime('%Y-%m')
-            mes_compra = st.text_input("Mes de la Compra (AAAA-MM)", value=mes_actual, key="mes_compra_input")
-
             producto_data = df_inventario[df_inventario['Producto'] == selected_product_name].iloc[0]
             current_stock = int(producto_data['Stock'])
             presentation = producto_data['Presentación']
@@ -307,7 +343,7 @@ elif ventana_seleccionada == 'Registro de Compras':
             st.markdown("---")
             col_left, col_right = st.columns(2)
             
-            # 3. Cantidad Comprada
+            # 2. Cantidad Comprada
             with col_left:
                 cantidad_comprada = st.number_input(
                     "Cantidad Comprada",
@@ -317,7 +353,7 @@ elif ventana_seleccionada == 'Registro de Compras':
                     key="cantidad_comprada_input"
                 )
             
-            # 4. Mostrar Presentación y Stock Actual
+            # 3. Mostrar Presentación y Stock Actual
             with col_right:
                 st.markdown(f"**Presentación:** `{presentation}`")
                 st.markdown(f"**Stock Actual:** `{current_stock}`")
@@ -328,18 +364,10 @@ elif ventana_seleccionada == 'Registro de Compras':
                 if cantidad_comprada > 0:
                     idx = df_inventario[df_inventario['Producto'] == selected_product_name].index[0]
                     
-                    # Actualizar Stock y Compras en inventario principal
                     st.session_state.df_inventario.loc[idx, 'Stock'] += cantidad_comprada
                     st.session_state.df_inventario.loc[idx, 'Compras'] += cantidad_comprada
 
-                    # Registrar el movimiento en el historial de compras
-                    new_compra = pd.DataFrame([{
-                        'Fecha': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                        'Mes': mes_compra,
-                        'ID': product_id,
-                        'Producto': selected_product_name,
-                        'Cantidad': cantidad_comprada
-                    }])
+                    new_compra = pd.DataFrame([{'ID': product_id, 'Producto': selected_product_name, 'Cantidad': cantidad_comprada}])
                     st.session_state.df_compras_hist = pd.concat([st.session_state.df_compras_hist, new_compra], ignore_index=True)
                     
                     st.success(f"Compra de {cantidad_comprada} unidades de '{selected_product_name}' registrada con éxito. Nuevo stock: {st.session_state.df_inventario.loc[idx, 'Stock']}")
@@ -349,4 +377,4 @@ elif ventana_seleccionada == 'Registro de Compras':
 
         st.markdown("---")
         st.subheader("Historial de Compras")
-        st.dataframe(st.session_state.df_compras_hist.sort_values(by='Fecha', ascending=False), use_container_width=True)
+        st.dataframe(st.session_state.df_compras_hist, use_container_width=True)
