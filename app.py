@@ -294,6 +294,7 @@ ventana_seleccionada = st.sidebar.radio(
 # -------------------------------------------------------------------------
 st.sidebar.markdown("---") 
 try:
+    # Usando una imagen genérica para el logo si el archivo no está
     st.sidebar.image(
         "logo_empresa.png", 
         caption="Distribuidora Universal del Llano" 
@@ -351,10 +352,10 @@ if ventana_seleccionada == 'Dashboard':
 
         # Gráfico 1: Niveles de Stock por Producto
         with viz_col1:
-            st.markdown("##### Niveles de Stock por Producto")
+            st.markdown("##### Top 10 Productos por Stock")
             df_stock_sorted = df_inventario.sort_values(by='Stock', ascending=False).head(10)
             fig_stock = px.bar(df_stock_sorted, x='Producto', y='Stock', text='Stock', 
-                               title="Top 10 Productos por Stock", color='Producto', height=350)
+                               title="Stock (Unidades)", color='Producto', height=350)
             st.plotly_chart(fig_stock, use_container_width=True)
 
         # Gráfico 2: Distribución de Productos por Categoría 
@@ -670,4 +671,81 @@ elif ventana_seleccionada == 'Reportes y Descarga':
     with col_ventas:
         st.subheader("Historial de Ventas")
         st.info(f"Total de Ventas: {df_ventas_hist.shape[0]} registros")
-        if not df_ventas_hist.
+        if not df_ventas_hist.empty:
+            excel_data = to_excel(df_ventas_hist)
+            st.download_button(
+                label="Descargar Historial de Ventas (Excel)",
+                data=excel_data,
+                file_name="historial_ventas.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+    # Reporte de Historial de Compras
+    with col_compras:
+        st.subheader("Historial de Compras")
+        st.info(f"Total de Compras: {df_compras_hist.shape[0]} registros")
+        if not df_compras_hist.empty:
+            excel_data = to_excel(df_compras_hist)
+            st.download_button(
+                label="Descargar Historial de Compras (Excel)",
+                data=excel_data,
+                file_name="historial_compras.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+            
+    st.markdown("---")
+    
+    ## --- GESTIÓN DE HISTORIAL ---
+    st.subheader("🗑️ Gestión y Limpieza de Historial")
+    st.warning("**¡Atención!** Borrar el historial es una acción irreversible. Solo elimina el registro de la tabla de historial, **pero no restablece el stock** de los productos afectados.")
+    
+    col_del_v, col_del_c = st.columns(2)
+    
+    with col_del_v:
+        if st.button("🔴 Borrar Historial de Ventas", use_container_width=True):
+            st.session_state.df_ventas_hist = pd.DataFrame(columns=['ID', 'Producto', 'Cantidad'])
+            st.success("✅ Historial de Ventas borrado exitosamente.")
+            st.rerun()
+
+    with col_del_c:
+        if st.button("🔴 Borrar Historial de Compras", use_container_width=True):
+            st.session_state.df_compras_hist = pd.DataFrame(columns=['ID', 'Producto', 'Cantidad'])
+            st.success("✅ Historial de Compras borrado exitosamente.")
+            st.rerun()
+            
+    st.markdown("---")
+    st.subheader("Previsualización del Inventario")
+    st.dataframe(df_inventario, use_container_width=True)
+
+# ----------------------------------------------------
+# 7. CONFIGURACIÓN
+# ----------------------------------------------------
+elif ventana_seleccionada == 'Configuración':
+    st.title("⚙️ Configuración")
+    st.header("Ajustes del Sistema de Inventario")
+
+    st.subheader("Umbral de Bajo Stock")
+    st.markdown("Define el número de unidades por debajo del cual un producto se considera en **Bajo Stock** y se marca en el Dashboard.")
+    
+    current_threshold = st.session_state.low_stock_threshold
+    
+    new_threshold = st.number_input(
+        "Establecer el Umbral de Bajo Stock:",
+        min_value=1,
+        max_value=100,
+        value=current_threshold,
+        step=1,
+        help="Los productos con Stock menor o igual a este valor se mostrarán en la alerta."
+    )
+    
+    if new_threshold != current_threshold:
+        st.session_state.low_stock_threshold = new_threshold
+        st.success(f"✅ Umbral de Bajo Stock actualizado a **{new_threshold}** unidades.")
+        st.rerun()
+    
+    st.markdown("---")
+    st.subheader("Información del Estado Actual")
+    st.metric("Umbral Actual", f"{st.session_state.low_stock_threshold} unidades")
+    st.metric("Productos Únicos Registrados", f"{st.session_state.df_inventario.shape[0]}")
+    st.metric("Registros Históricos de Ventas", f"{st.session_state.df_ventas_hist.shape[0]}")
+    st.metric("Registros Históricos de Compras", f"{st.session_state.df_compras_hist.shape[0]}")
