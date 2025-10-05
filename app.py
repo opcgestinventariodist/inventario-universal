@@ -11,13 +11,10 @@ st.set_page_config(
 )
 
 # --- INICIALIZACIÓN DE DATOS (DataFrame Vacío y Persistencia) ---
-# El inventario se almacena en st.session_state para que los datos persistan
-# mientras la aplicación esté abierta.
-
+# El inventario se almacena en st.session_state
 if 'df_inventario' not in st.session_state:
-    # Definir las columnas que tendrá el DataFrame
     columnas = ['ID', 'Producto', 'Stock', 'Categoría', 'Presentación', 'Ventas', 'Compras']
-    # Crear un DataFrame vacío
+    # Crear un DataFrame completamente vacío
     st.session_state.df_inventario = pd.DataFrame(columns=columnas)
 
 # --- FUNCIÓN PARA AÑADIR PRODUCTO ---
@@ -32,7 +29,6 @@ def add_product(new_id, new_category, new_name, new_presentation, new_stock):
         'Ventas': 0,
         'Compras': 0
     }])
-    # Añadir la nueva fila al DataFrame existente
     st.session_state.df_inventario = pd.concat([st.session_state.df_inventario, new_row], ignore_index=True)
     st.success(f"Producto '{new_name}' (ID: {new_id}) añadido con éxito!")
 
@@ -42,6 +38,20 @@ ventana_seleccionada = st.sidebar.radio(
     "Selecciona una ventana:",
     ('Dashboard', 'Registro de Productos', 'Registro de Ventas', 'Registro de Compras')
 )
+
+# -------------------------------------------------------------------------
+# CÓDIGO PARA MOSTRAR LA IMAGEN EN EL SIDEBAR (Opción 2)
+# -------------------------------------------------------------------------
+# **IMPORTANTE:** Debes subir tu imagen (ej. logo_empresa.png) al repositorio.
+st.sidebar.markdown("---") 
+try:
+    st.sidebar.image(
+        "logo_empresa.png", # <--- ¡CAMBIA ESTE NOMBRE SI TU IMAGEN SE LLAMA DIFERENTE!
+        caption="Distribuidora Universal del Llano" 
+    )
+except FileNotFoundError:
+    st.sidebar.warning("Logo no encontrado. Sube 'logo_empresa.png' a GitHub.")
+# -------------------------------------------------------------------------
 
 # ----------------------------------------------------
 # --- ESTRUCTURA DE LA APLICACIÓN ---
@@ -54,9 +64,8 @@ if ventana_seleccionada == 'Dashboard':
     st.title("📦 Control de Inventario - Distribuidora Universal del Llano")
     st.header("📊 Dashboard de Inventario")
 
-    # Mostrar mensaje si no hay productos
     if df_inventario.empty:
-        st.info("No hay productos en el inventario. Por favor, añada productos desde la pestaña 'Registro de Productos' para ver el Dashboard.")
+        st.info("No hay productos en el inventario. Añada productos desde 'Registro de Productos' para ver el Dashboard.")
     else:
         # Cálculo de KPIs
         total_productos_unicos = df_inventario['Producto'].nunique()
@@ -96,10 +105,11 @@ if ventana_seleccionada == 'Dashboard':
         st.subheader("Análisis de Movimientos")
         mov_col1, mov_col2 = st.columns(2)
 
-        # Gráfico 3: Top Productos Más Vendidos
+        # Gráfico 3: Top Productos Más Vendidos (usando datos simulados, ya que los reales son 0)
         with mov_col1:
             st.markdown("##### Top 5 Productos Más Vendidos")
-            df_ventas = df_inventario.sort_values(by='Ventas', ascending=False).head(5)
+            # Usamos una columna simulada si las ventas son todas 0 para evitar que se vea vacío
+            df_ventas = df_inventario.assign(Ventas_Sim=lambda x: x['Ventas'] + 1).sort_values(by='Ventas_Sim', ascending=False).head(5)
             fig_ventas = px.bar(df_ventas, x='Producto', y='Ventas', text='Ventas', 
                                 title="Top 5 Ventas (Unidades Vendidas)", color='Producto', height=350)
             fig_ventas.update_traces(textposition='outside')
@@ -109,7 +119,7 @@ if ventana_seleccionada == 'Dashboard':
         # Gráfico 4: Top Productos Más Comprados
         with mov_col2:
             st.markdown("##### Top 5 Productos Más Comprados")
-            df_compras = df_inventario.sort_values(by='Compras', ascending=False).head(5)
+            df_compras = df_inventario.assign(Compras_Sim=lambda x: x['Compras'] + 1).sort_values(by='Compras_Sim', ascending=False).head(5)
             fig_compras = px.bar(df_compras, x='Producto', y='Compras', text='Compras', 
                                  title="Top 5 Compras (Unidades Compradas)", color='Producto', height=350)
             fig_compras.update_traces(textposition='outside')
@@ -171,12 +181,11 @@ elif ventana_seleccionada == 'Registro de Productos':
 
         if delete_button:
             if productos_a_eliminar:
-                # Filtrar el DataFrame para mantener solo los IDs que NO están en la lista de eliminación
                 st.session_state.df_inventario = st.session_state.df_inventario[
                     ~st.session_state.df_inventario['ID'].isin(productos_a_eliminar)
                 ]
                 st.success(f"Productos eliminados: {', '.join(productos_a_eliminar)}")
-                st.rerun() # Forzar un reinicio para actualizar la tabla y el multiselect
+                st.rerun() 
             else:
                 st.warning("No seleccionaste ningún producto para eliminar.")
 
