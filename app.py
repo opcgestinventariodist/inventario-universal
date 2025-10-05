@@ -1,4 +1,4 @@
-import streamlit as st
+import streamlit as st  # Forzar reinicio
 import pandas as pd
 import plotly.express as px
 from unidecode import unidecode 
@@ -488,3 +488,4 @@ elif ventana_seleccionada == 'Registro de Compras':
         st.markdown("---")
         st.subheader("Historial de Compras")
         st.dataframe(st.session_state.df_compras_hist, use_container_width=True)
+
