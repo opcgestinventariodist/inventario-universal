@@ -6,7 +6,7 @@ from io import BytesIO
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
-    page_title="Inventario Universal del Llano (COMPLETO)",
+    page_title="Inventario Universal del Llano (Base Precargada)",
     page_icon="📦",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -54,11 +54,11 @@ def to_excel(df):
     writer.close()
     return output.getvalue()
 
-# --- FUNCIONES DE PROCESAMIENTO MASIVO ---
+# --- FUNCIONES DE PROCESAMIENTO MASIVO (USADAS TAMBIÉN PARA CARGA INICIAL) ---
 
 def process_sales_from_df(df_ventas_new):
     """
-    Procesa un DataFrame de ventas (carga masiva).
+    Procesa un DataFrame de ventas (carga masiva o inicial).
     IMPORTANTE: Solo procesa IDs que existen en el inventario.
     """
     if st.session_state.df_inventario.empty:
@@ -116,7 +116,7 @@ def process_sales_from_df(df_ventas_new):
 
 def process_purchases_from_df(df_compras_new):
     """
-    Procesa un DataFrame de compras (carga masiva).
+    Procesa un DataFrame de compras (carga masiva o inicial).
     IMPORTANTE: Solo procesa IDs que existen en el inventario.
     """
     if st.session_state.df_inventario.empty:
@@ -171,12 +171,48 @@ def process_purchases_from_df(df_compras_new):
 
     return compras_exitosas, compras_fallidas, None
 
-# --- INICIALIZACIÓN DE DATOS (Completamente Vacío) ---
 
+# --- INICIALIZACIÓN DE DATOS (Con Carga Automática de Excel) ---
+
+# Inventario principal
 if 'df_inventario' not in st.session_state:
     columnas = ['ID', 'Producto', 'Stock', 'Categoría', 'Presentación', 'Ventas', 'Compras']
-    st.session_state.df_inventario = pd.DataFrame(columns=columnas)
+    df_inventario_vacio = pd.DataFrame(columns=columnas)
+    
+    # === 1. LÓGICA DE CARGA AUTOMÁTICA DEL INVENTARIO INICIAL (inventario_inicial.xlsx) ===
+    try:
+        INVENTARIO_FILE_PATH = 'inventario_inicial.xlsx' 
+        
+        if INVENTARIO_FILE_PATH.endswith('.csv'):
+            df_inicial = pd.read_csv(INVENTARIO_FILE_PATH)
+        else:
+            df_inicial = pd.read_excel(INVENTARIO_FILE_PATH) 
+        
+        df_inicial.columns = [clean_col_name(col) for col in df_inicial.columns]
+        
+        # 1. Inicializar el inventario base
+        df_cargado = pd.DataFrame({
+            'ID': df_inicial['ID'].astype(str).str.upper().str.strip(),
+            'Producto': df_inicial['PRODUCTO'],
+            'Stock': pd.to_numeric(df_inicial['STOCK_INICIAL'], errors='coerce').fillna(0).astype(int),
+            'Categoría': df_inicial['CATEGORIA'], 
+            'Presentación': df_inicial['PRESENTACION'],
+            'Ventas': 0, 
+            'Compras': 0
+        })
+        
+        st.session_state.df_inventario = df_cargado
+        st.toast("✅ Inventario base cargado desde archivo inicial.", icon="📦")
+        
+    except FileNotFoundError:
+        st.session_state.df_inventario = df_inventario_vacio
+        st.warning("No se encontró 'inventario_inicial.xlsx'. Iniciando con inventario vacío.")
+        
+    except Exception as e:
+        st.error(f"Error al cargar el archivo de inventario. Revise el formato y el error: {e}")
+        st.session_state.df_inventario = df_inventario_vacio
 
+# Historial de registros (Comienzan vacíos)
 if 'df_ventas_hist' not in st.session_state:
     st.session_state.df_ventas_hist = pd.DataFrame(columns=['ID', 'Producto', 'Cantidad'])
 
@@ -186,6 +222,60 @@ if 'df_compras_hist' not in st.session_state:
 # Umbral de bajo stock por defecto (configurable)
 if 'low_stock_threshold' not in st.session_state:
     st.session_state.low_stock_threshold = 10 
+
+# === 2. LÓGICA DE CARGA AUTOMÁTICA DE VENTAS DE MOVIMIENTO (ventas_mes1.xlsx) ===
+if not st.session_state.df_inventario.empty:
+    
+    VENTAS_FILE_PATH = 'ventas_mes1.xlsx' 
+    
+    try:
+        if VENTAS_FILE_PATH.endswith('.csv'):
+            df_ventas_github = pd.read_csv(VENTAS_FILE_PATH)
+        else:
+            df_ventas_github = pd.read_excel(VENTAS_FILE_PATH)
+            
+        ventas_exitosas, ventas_fallidas, error = process_sales_from_df(df_ventas_github)
+        
+        if error:
+             st.warning(f"Error en el archivo '{VENTAS_FILE_PATH}': {error}")
+             
+        if ventas_exitosas > 0:
+            st.toast(f"✅ {ventas_exitosas} ventas procesadas automáticamente desde '{VENTAS_FILE_PATH}'.", icon="💸")
+        if ventas_fallidas:
+            st.warning(f"⚠️ {len(ventas_fallidas)} ventas de '{VENTAS_FILE_PATH}' **FALLARON** porque el producto no existe en el inventario. ID no procesadas: {', '.join(ventas_fallidas)}")
+            
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        st.warning(f"No se pudo leer el archivo '{VENTAS_FILE_PATH}'. Asegúrese de que el formato (ID, Cantidad) sea correcto. Error: {e}")
+
+
+# === 3. LÓGICA DE CARGA AUTOMÁTICA DE COMPRAS DE MOVIMIENTO (compras_mes1.xlsx) ===
+if not st.session_state.df_inventario.empty:
+    
+    COMPRAS_FILE_PATH = 'compras_mes1.xlsx' 
+    
+    try:
+        if COMPRAS_FILE_PATH.endswith('.csv'):
+            df_compras_github = pd.read_csv(COMPRAS_FILE_PATH)
+        else:
+            df_compras_github = pd.read_excel(COMPRAS_FILE_PATH)
+            
+        compras_exitosas, compras_fallidas, error = process_purchases_from_df(df_compras_github)
+        
+        if error:
+             st.warning(f"Error en el archivo '{COMPRAS_FILE_PATH}': {error}")
+             
+        if compras_exitosas > 0:
+            st.toast(f"✅ {compras_exitosas} compras procesadas automáticamente desde '{COMPRAS_FILE_PATH}'.", icon="🛒")
+        if compras_fallidas:
+             st.warning(f"⚠️ {len(compras_fallidas)} compras de '{COMPRAS_FILE_PATH}' **FALLARON** porque el producto no existe en el inventario. ID no procesadas: {', '.join(compras_fallidas)}")
+            
+    except FileNotFoundError:
+        pass 
+    except Exception as e:
+        st.warning(f"No se pudo leer el archivo '{COMPRAS_FILE_PATH}'. Asegúrese de que el formato (ID, Cantidad) sea correcto. Error: {e}")
+
 
 # --- NAVEGACIÓN EN EL SIDEBAR ---
 st.sidebar.header("Menú de Navegación")
@@ -199,14 +289,11 @@ ventana_seleccionada = st.sidebar.radio(
 # -------------------------------------------------------------------------
 st.sidebar.markdown("---") 
 try:
-    # Intenta cargar la imagen que el usuario ha subido con el nombre genérico
     st.sidebar.image(
         "logo_empresa.png", 
         caption="Distribuidora Universal del Llano" 
     )
 except FileNotFoundError:
-    # Muestra una imagen de marcador de posición si el logo no está en el directorio
-    # Reemplazo por un mensaje simple para evitar cargar archivos que no existen en el entorno
     st.sidebar.info("Sube tu logo (ej: 'logo_empresa.png') a GitHub para verlo aquí.")
 # -------------------------------------------------------------------------
 
@@ -241,7 +328,7 @@ if ventana_seleccionada == 'Dashboard':
 
         st.markdown("---") 
         
-        # Alerta de Bajo Stock (Nueva funcionalidad)
+        # Alerta de Bajo Stock 
         st.subheader("🚨 Productos con Bajo Stock")
         df_bajo_stock = df_inventario[df_inventario['Stock'].astype(int) <= threshold].sort_values(by='Stock', ascending=True)
         if df_bajo_stock.empty:
@@ -488,7 +575,7 @@ elif ventana_seleccionada == 'Registro de Compras':
         st.dataframe(st.session_state.df_compras_hist, use_container_width=True)
 
 # ----------------------------------------------------
-# 5. CARGA DE MOVIMIENTOS (MASIVA) (NUEVA)
+# 5. CARGA DE MOVIMIENTOS (MASIVA)
 # ----------------------------------------------------
 elif ventana_seleccionada == 'Carga de Movimientos':
     st.title("⬆️ Carga Masiva de Movimientos")
@@ -549,7 +636,7 @@ elif ventana_seleccionada == 'Carga de Movimientos':
                             st.balloons()
                             st.rerun()
 # ----------------------------------------------------
-# 6. REPORTES Y DESCARGA (NUEVA)
+# 6. REPORTES Y DESCARGA 
 # ----------------------------------------------------
 elif ventana_seleccionada == 'Reportes y Descarga':
     st.title("⬇️ Reportes y Descarga de Datos")
@@ -593,3 +680,46 @@ elif ventana_seleccionada == 'Reportes y Descarga':
         st.info(f"Total de Compras: {df_compras_hist.shape[0]} registros")
         if not df_compras_hist.empty:
             excel_data = to_excel(df_compras_hist)
+            st.download_button(
+                label="Descargar Historial de Compras (Excel)",
+                data=excel_data,
+                file_name="historial_compras.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+            
+    st.markdown("---")
+    st.subheader("Previsualización del Inventario")
+    st.dataframe(df_inventario, use_container_width=True)
+
+# ----------------------------------------------------
+# 7. CONFIGURACIÓN
+# ----------------------------------------------------
+elif ventana_seleccionada == 'Configuración':
+    st.title("⚙️ Configuración")
+    st.header("Ajustes del Sistema de Inventario")
+
+    st.subheader("Umbral de Bajo Stock")
+    st.markdown("Define el número de unidades por debajo del cual un producto se considera en **Bajo Stock** y se marca en el Dashboard.")
+    
+    current_threshold = st.session_state.low_stock_threshold
+    
+    new_threshold = st.number_input(
+        "Establecer el Umbral de Bajo Stock:",
+        min_value=1,
+        max_value=100,
+        value=current_threshold,
+        step=1,
+        help="Los productos con Stock menor o igual a este valor se mostrarán en la alerta."
+    )
+    
+    if new_threshold != current_threshold:
+        st.session_state.low_stock_threshold = new_threshold
+        st.success(f"✅ Umbral de Bajo Stock actualizado a **{new_threshold}** unidades.")
+        st.rerun()
+    
+    st.markdown("---")
+    st.subheader("Información del Estado Actual")
+    st.metric("Umbral Actual", f"{st.session_state.low_stock_threshold} unidades")
+    st.metric("Productos Únicos Registrados", f"{st.session_state.df_inventario.shape[0]}")
+    st.metric("Registros Históricos de Ventas", f"{st.session_state.df_ventas_hist.shape[0]}")
+    st.metric("Registros Históricos de Compras", f"{st.session_state.df_compras_hist.shape[0]}")
