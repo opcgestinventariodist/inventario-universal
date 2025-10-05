@@ -144,4 +144,10 @@ if ventana_seleccionada == 'Dashboard':
         # Gráfico 4: Top Productos Más Comprados (Comienza en 0)
         with mov_col2:
             st.markdown("##### Top 5 Productos Más Comprados")
-            df_compras = df_inventario.sort_values(
+            # --- LÍNEA CORREGIDA AQUÍ: Cerrar el paréntesis después de head(5) ---
+            df_compras = df_inventario.sort_values(by='Compras', ascending=False).head(5) 
+            # -------------------------------------------------------------------
+            fig_compras = px.bar(df_compras, x='Producto', y='Compras', text='Compras', 
+                                 title="Top 5 Compras (Unidades Compradas)", color='Producto', height=350)
+            st.plotly_chart(fig_compras, use_container_width=True)
+
