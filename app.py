@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-# La librería datetime ya no es necesaria, pero la dejamos para referencia si se necesita en el futuro
 from datetime import datetime 
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
@@ -130,7 +129,7 @@ if ventana_seleccionada == 'Dashboard':
             st.plotly_chart(fig_compras, use_container_width=True)
 
 
-# --- REGISTRO DE PRODUCTOS (Mantenido) ---
+# --- REGISTRO DE PRODUCTOS (MODIFICADO para limpiar historiales) ---
 elif ventana_seleccionada == 'Registro de Productos':
     st.title("➕ Registro de Productos")
     st.header("Ingresa los datos del nuevo producto:")
@@ -165,7 +164,7 @@ elif ventana_seleccionada == 'Registro de Productos':
                 else:
                     add_product(id_producto.upper(), categoria, nombre_producto, presentacion, stock_inicial)
 
-    # --- 2. GESTIÓN Y ELIMINACIÓN ---
+    # --- 2. GESTIÓN Y ELIMINACIÓN (LÓGICA ACTUALIZADA) ---
     st.markdown("---")
     st.subheader("⚠️ Gestión y Eliminación de Productos")
 
@@ -175,7 +174,7 @@ elif ventana_seleccionada == 'Registro de Productos':
         df_inventario_actual = st.session_state.df_inventario.copy()
 
         productos_a_eliminar = st.multiselect(
-            "Selecciona los IDs de los productos que deseas eliminar:",
+            "Selecciona los IDs de los productos que deseas eliminar (Se eliminarán también de los historiales):",
             options=df_inventario_actual['ID'].tolist(),
             key='delete_multiselect'
         )
@@ -184,10 +183,23 @@ elif ventana_seleccionada == 'Registro de Productos':
 
         if delete_button:
             if productos_a_eliminar:
+                
+                # 1. ELIMINAR DEL INVENTARIO PRINCIPAL
                 st.session_state.df_inventario = st.session_state.df_inventario[
                     ~st.session_state.df_inventario['ID'].isin(productos_a_eliminar)
                 ]
-                st.success(f"Productos eliminados: {', '.join(productos_a_eliminar)}")
+                
+                # 2. ELIMINAR DEL HISTORIAL DE VENTAS (NUEVO)
+                st.session_state.df_ventas_hist = st.session_state.df_ventas_hist[
+                    ~st.session_state.df_ventas_hist['ID'].isin(productos_a_eliminar)
+                ]
+                
+                # 3. ELIMINAR DEL HISTORIAL DE COMPRAS (NUEVO)
+                st.session_state.df_compras_hist = st.session_state.df_compras_hist[
+                    ~st.session_state.df_compras_hist['ID'].isin(productos_a_eliminar)
+                ]
+                
+                st.success(f"Productos eliminados: {', '.join(productos_a_eliminar)}. Se limpiaron los registros de su historial.")
                 st.rerun() 
             else:
                 st.warning("No seleccionaste ningún producto para eliminar.")
@@ -276,7 +288,7 @@ elif ventana_seleccionada == 'Registro de Ventas':
 
 
 # --- REGISTRO DE COMPRAS (SIN CAMPO DE FECHA) ---
-elif ventana_seleccionada == 'Registro de Compras':
+elif ventana_seleccionada == 'Registro de Compra':
     df_inventario = st.session_state.df_inventario
     st.title("🛒 Registro de Compras (Entradas)")
 
