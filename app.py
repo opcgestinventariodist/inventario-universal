@@ -109,7 +109,7 @@ def process_sales_from_df(df_ventas_new):
     if ventas_exitosas > 0:
         st.session_state.df_inventario = df_inventario_temp
         df_hist_new = pd.DataFrame(nuevos_registros_historial)
-        # Se añade al historial de ventas y se CONSERVA
+        # Se añade al historial, pero se borrará en la inicialización (Línea 235)
         st.session_state.df_ventas_hist = pd.concat([st.session_state.df_ventas_hist, df_hist_new], ignore_index=True)
 
     return ventas_exitosas, ventas_fallidas, None
@@ -175,10 +175,12 @@ if not st.session_state.df_inventario.empty:
         else:
             df_ventas_github = pd.read_excel(VENTAS_FILE_PATH)
             
-        # Llama a la función de procesamiento (Aplica al stock y guarda el historial)
+        # Llama a la función de procesamiento (Aplica al stock y guarda el historial temporalmente)
         ventas_exitosas, ventas_fallidas, error = process_sales_from_df(df_ventas_github)
         
-        # ❌ SE ELIMINA LA LÍNEA QUE BORRABA EL HISTORIAL AQUÍ.
+        # 🚨 LA LÍNEA MÁGICA: Reinicia el historial de ventas para que solo queden las nuevas
+        if ventas_exitosas > 0:
+            st.session_state.df_ventas_hist = pd.DataFrame(columns=['ID', 'Producto', 'Cantidad'])
         
         if error:
              st.warning(f"Error en el archivo '{VENTAS_FILE_PATH}': {error}")
@@ -404,7 +406,7 @@ elif ventana_seleccionada == 'Registro de Ventas':
                     st.session_state.df_inventario.loc[idx, 'Ventas'] += cantidad_vendida
 
                     new_venta = pd.DataFrame([{'ID': product_id, 'Producto': selected_product_name, 'Cantidad': cantidad_vendida}])
-                    # Las ventas (manuales y masivas) se añaden al historial
+                    # Solo las ventas manuales posteriores se añaden al historial
                     st.session_state.df_ventas_hist = pd.concat([st.session_state.df_ventas_hist, new_venta], ignore_index=True)
                     
                     new_stock = st.session_state.df_inventario.loc[idx, 'Stock']
@@ -418,7 +420,7 @@ elif ventana_seleccionada == 'Registro de Ventas':
 
         st.markdown("---")
         st.subheader("Historial de Ventas")
-        # Esta tabla ahora muestra todas las ventas
+        # Esta tabla solo muestra lo registrado desde el último reinicio/deploy
         st.dataframe(st.session_state.df_ventas_hist, use_container_width=True)
 
 
