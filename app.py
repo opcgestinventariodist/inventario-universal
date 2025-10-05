@@ -394,7 +394,7 @@ if ventana_seleccionada == 'Dashboard':
 # ----------------------------------------------------
 elif ventana_seleccionada == 'Registro de Productos':
     df_inventario = st.session_state.df_inventario
-    st.title("➕ Registro de Productos")
+    st.title("📝 Registro de Productos")
     st.header("Registro Manual de Productos")
 
     # --- 1. FORMULARIO DE INGRESO MANUAL ---
@@ -596,3 +596,4 @@ elif ventana_seleccionada == 'Registro de Compras':
 # elif ventana_seleccionada == 'Configuración':
 #     st.title("⚙️ Configuración")
 #     st.info("Esta ventana no está activa en el menú de navegación.")
+
