@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# --- CONFIGURACIÓN DE LA PÁGINA (Debe ser lo primero) ---
+# --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
     page_title="Inventario Universal del Llano",
     page_icon="📦",
@@ -10,8 +10,9 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- INICIALIZACIÓN DE DATOS (DataFrame Vacío) ---
-# Se inicializa la tabla con las columnas necesarias pero sin filas (registros).
+# --- INICIALIZACIÓN DE DATOS (DataFrame Vacío y Persistencia) ---
+# El inventario se almacena en st.session_state para que los datos persistan
+# mientras la aplicación esté abierta.
 
 if 'df_inventario' not in st.session_state:
     # Definir las columnas que tendrá el DataFrame
@@ -35,7 +36,7 @@ def add_product(new_id, new_category, new_name, new_presentation, new_stock):
     st.session_state.df_inventario = pd.concat([st.session_state.df_inventario, new_row], ignore_index=True)
     st.success(f"Producto '{new_name}' (ID: {new_id}) añadido con éxito!")
 
-# --- NAVEGACIÓN EN EL SIDEBAR (Menú de Navegación) ---
+# --- NAVEGACIÓN EN EL SIDEBAR ---
 st.sidebar.header("Menú de Navegación")
 ventana_seleccionada = st.sidebar.radio(
     "Selecciona una ventana:",
@@ -48,22 +49,22 @@ ventana_seleccionada = st.sidebar.radio(
 
 # --- DASHBOARD ---
 if ventana_seleccionada == 'Dashboard':
-    # Usamos el DataFrame actualizado
     df_inventario = st.session_state.df_inventario
     
     st.title("📦 Control de Inventario - Distribuidora Universal del Llano")
     st.header("📊 Dashboard de Inventario")
 
-    # Si no hay productos, mostramos un mensaje en lugar de gráficos rotos
+    # Mostrar mensaje si no hay productos
     if df_inventario.empty:
         st.info("No hay productos en el inventario. Por favor, añada productos desde la pestaña 'Registro de Productos' para ver el Dashboard.")
     else:
-        # Cálculo de los KPIs (usando el código anterior)
+        # Cálculo de KPIs
         total_productos_unicos = df_inventario['Producto'].nunique()
         total_unidades_stock = df_inventario['Stock'].astype(int).sum()
         productos_bajo_stock = df_inventario[df_inventario['Stock'].astype(int) <= 10].shape[0]
 
-        # Mostrar los KPIs en columnas
+        # Mostrar KPIs
+        st.subheader("Indicadores Clave (KPIs)")
         col1, col2, col3 = st.columns(3)
         with col1: st.metric("Total de Productos Únicos", f"{total_productos_unicos}")
         with col2: st.metric("Total de Unidades en Stock", f"{total_unidades_stock}")
@@ -71,15 +72,13 @@ if ventana_seleccionada == 'Dashboard':
 
         st.markdown("---") 
         st.subheader("Visualizaciones")
-        
         viz_col1, viz_col2 = st.columns(2)
 
         # Gráfico 1: Niveles de Stock por Producto
         with viz_col1:
             st.markdown("##### Niveles de Stock por Producto")
             df_stock_sorted = df_inventario.sort_values(by='Stock', ascending=False)
-            fig_stock = px.bar(df_stock_sorted, 
-                               x='Producto', y='Stock', text='Stock', 
+            fig_stock = px.bar(df_stock_sorted, x='Producto', y='Stock', text='Stock', 
                                title="Stock por Producto", color='Producto', height=350)
             fig_stock.update_traces(textposition='outside')
             fig_stock.update_layout(xaxis_title="", yaxis_title="Stock")
@@ -118,14 +117,13 @@ if ventana_seleccionada == 'Dashboard':
             st.plotly_chart(fig_compras, use_container_width=True)
 
 
-# --- REGISTRO DE PRODUCTOS (CORRECTO) ---
+# --- REGISTRO DE PRODUCTOS (CON FORMULARIO Y ELIMINACIÓN) ---
 elif ventana_seleccionada == 'Registro de Productos':
     st.title("➕ Registro de Productos")
     st.header("Ingresa los datos del nuevo producto:")
 
-    # Usamos un formulario para manejar el envío de datos de forma atómica
+    # --- 1. FORMULARIO DE INGRESO ---
     with st.form("registro_producto_form"):
-        # Distribución de campos en columnas
         col_left, col_right = st.columns(2)
 
         # Columna Izquierda
@@ -141,37 +139,62 @@ elif ventana_seleccionada == 'Registro de Productos':
         # Campo Stock Inicial (Control numérico)
         stock_inicial = st.number_input("Stock Inicial", min_value=0, value=0, step=1, key="stock_input")
 
-        # Botón de Envío del Formulario
         submit_button = st.form_submit_button("Añadir Producto")
         
         # Lógica al enviar el formulario
         if submit_button:
-            # Validación de campos
             if not all([id_producto, nombre_producto, categoria, presentacion]):
                 st.error("Por favor, completa todos los campos para añadir el producto.")
             else:
-                # Verificar si el ID ya existe
                 if id_producto.upper() in st.session_state.df_inventario['ID'].str.upper().values:
                     st.error(f"Error: El ID '{id_producto}' ya existe. Por favor, usa un ID único.")
                 else:
-                    # Llamar a la función para añadir el producto
                     add_product(id_producto.upper(), categoria, nombre_producto, presentacion, stock_inicial)
 
+    # --- 2. GESTIÓN Y ELIMINACIÓN ---
+    st.markdown("---")
+    st.subheader("⚠️ Gestión y Eliminación de Productos")
+
+    if st.session_state.df_inventario.empty:
+        st.info("Aún no hay productos registrados para gestionar o eliminar.")
+    else:
+        df_inventario_actual = st.session_state.df_inventario.copy()
+
+        # Opción de selección múltiple de IDs para eliminar
+        productos_a_eliminar = st.multiselect(
+            "Selecciona los IDs de los productos que deseas eliminar:",
+            options=df_inventario_actual['ID'].tolist(),
+            key='delete_multiselect'
+        )
+
+        delete_button = st.button("🔴 Eliminar Productos Seleccionados")
+
+        if delete_button:
+            if productos_a_eliminar:
+                # Filtrar el DataFrame para mantener solo los IDs que NO están en la lista de eliminación
+                st.session_state.df_inventario = st.session_state.df_inventario[
+                    ~st.session_state.df_inventario['ID'].isin(productos_a_eliminar)
+                ]
+                st.success(f"Productos eliminados: {', '.join(productos_a_eliminar)}")
+                st.rerun() # Forzar un reinicio para actualizar la tabla y el multiselect
+            else:
+                st.warning("No seleccionaste ningún producto para eliminar.")
+
+    # --- 3. INVENTARIO ACTUAL ---
     st.markdown("---")
     st.subheader("Inventario Actual")
-    # Muestra el inventario actual
     st.dataframe(st.session_state.df_inventario, use_container_width=True)
 
-# --- REGISTRO DE VENTAS (Mantenemos la simulación) ---
+# --- REGISTRO DE VENTAS (Simulación) ---
 elif ventana_seleccionada == 'Registro de Ventas':
     st.title("💸 Registro de Ventas")
     st.info("Aquí se construiría el formulario y la tabla para registrar transacciones de venta.")
     if not st.session_state.df_inventario.empty:
-        st.dataframe(st.session_state.df_inventario[['ID', 'Producto', 'Stock', 'Ventas']])
+        st.dataframe(st.session_state.df_inventario[['ID', 'Producto', 'Stock', 'Ventas']], use_container_width=True)
 
-# --- REGISTRO DE COMPRAS (Mantenemos la simulación) ---
+# --- REGISTRO DE COMPRAS (Simulación) ---
 elif ventana_seleccionada == 'Registro de Compras':
     st.title("🛒 Registro de Compras")
     st.info("Aquí se construiría el formulario y la tabla para registrar entradas de inventario por compra.")
     if not st.session_state.df_inventario.empty:
-        st.dataframe(st.session_state.df_inventario[['ID', 'Producto', 'Stock', 'Compras']])
+        st.dataframe(st.session_state.df_inventario[['ID', 'Producto', 'Stock', 'Compras']], use_container_width=True)
