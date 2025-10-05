@@ -1,7 +1,7 @@
-import streamlit as st 
+import streamlit as st
 import pandas as pd
 import plotly.express as px
-from unidecode import unidecode 
+from unidecode import unidecode # Necesita estar en requirements.txt
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
@@ -27,6 +27,10 @@ CATEGORIA_OPCIONES = [
 
 # --- FUNCIONES DE AYUDA ---
 
+def clean_col_name(col):
+    """Limpia el nombre de la columna: elimina tildes, espacios, y convierte a mayúsculas."""
+    return unidecode(col).strip().replace(' ', '_').upper()
+
 def add_product(new_id, new_category, new_name, new_presentation, new_stock):
     """Añade un nuevo producto al DataFrame de inventario."""
     new_row = pd.DataFrame([{
@@ -43,12 +47,9 @@ def add_product(new_id, new_category, new_name, new_presentation, new_stock):
 
 
 def process_sales_from_df(df_ventas_new):
-    """Procesa un DataFrame de ventas y actualiza el inventario y el historial, PERMITIENDO STOCK NEGATIVO."""
+    """Procesa un DataFrame de ventas, actualiza el inventario y el historial, PERMITIENDO STOCK NEGATIVO."""
     
-    # Función de limpieza avanzada de nombres de columna
-    def clean_col_name(col):
-        return unidecode(col).strip().replace(' ', '_').upper()
-
+    # 1. Estandarizar y validar columnas
     df_ventas_new.columns = [clean_col_name(col) for col in df_ventas_new.columns]
 
     if 'ID' not in df_ventas_new.columns:
@@ -89,7 +90,7 @@ def process_sales_from_df(df_ventas_new):
             idx = match.index[0]
             product_name = df_inventario_temp.loc[idx, 'Producto']
             
-            # Se aplica la venta sin restricción (permite stock negativo)
+            # Aplica la venta (permite stock negativo)
             df_inventario_temp.loc[idx, 'Stock'] -= cantidad
             df_inventario_temp.loc[idx, 'Ventas'] += cantidad
             
@@ -108,7 +109,6 @@ def process_sales_from_df(df_ventas_new):
     if ventas_exitosas > 0:
         st.session_state.df_inventario = df_inventario_temp
         df_hist_new = pd.DataFrame(nuevos_registros_historial)
-        # Se actualiza el historial AQUI. Esto se borrará en la lógica de inicialización.
         st.session_state.df_ventas_hist = pd.concat([st.session_state.df_ventas_hist, df_hist_new], ignore_index=True)
 
     return ventas_exitosas, ventas_fallidas, None
@@ -128,12 +128,10 @@ if 'df_inventario' not in st.session_state:
         if INVENTARIO_FILE_PATH.endswith('.csv'):
             df_inicial = pd.read_csv(INVENTARIO_FILE_PATH)
         else:
-            df_inicial = pd.read_excel(INVENTARIO_FILE_PATH)
+            # openpyxl es necesario aquí
+            df_inicial = pd.read_excel(INVENTARIO_FILE_PATH) 
         
-        # Función de limpieza avanzada de nombres de columna
-        def clean_col_name(col):
-            return unidecode(col).strip().replace(' ', '_').upper()
-
+        # Aplicamos la limpieza que eliminará la tilde de "Categoría" -> "CATEGORIA"
         df_inicial.columns = [clean_col_name(col) for col in df_inicial.columns]
         
         # 1. Inicializar el inventario base
@@ -155,6 +153,7 @@ if 'df_inventario' not in st.session_state:
         st.warning("No se encontró 'inventario_inicial.xlsx'. Iniciando con inventario vacío.")
         
     except Exception as e:
+        # Muestra el error de openpyxl aquí si no está instalado
         st.error(f"Error al cargar el archivo de inventario. Revise el formato y el error: {e}")
         st.session_state.df_inventario = df_inventario_vacio
 
@@ -182,17 +181,18 @@ if not st.session_state.df_inventario.empty:
         ventas_exitosas, ventas_fallidas, error = process_sales_from_df(df_ventas_github)
         
         # 🚨 MODIFICACIÓN CLAVE: BORRAR EL HISTORIAL INMEDIATAMENTE DESPUÉS DE LA CARGA MASIVA
+        # Esto asegura que solo las ventas manuales posteriores se muestren en el historial.
         if ventas_exitosas > 0:
             st.session_state.df_ventas_hist = pd.DataFrame(columns=['ID', 'Producto', 'Cantidad'])
-            
+        
         if error:
              st.warning(f"Error en el archivo '{VENTAS_FILE_PATH}': {error}")
              
         if ventas_exitosas > 0:
             st.toast(f"✅ {ventas_exitosas} ventas procesadas automáticamente desde '{VENTAS_FILE_PATH}'.", icon="💸")
         if ventas_fallidas:
-            # Mostramos un resumen de los fallos (solo los productos con ID no encontrada)
-            st.warning(f"⚠️ {len(ventas_fallidas)} ventas de '{VENTAS_FILE_PATH}' fallaron. Revise la ID, ya que el stock negativo está permitido.")
+            # El único fallo ahora debe ser el ID no encontrado, ya que el stock negativo está permitido.
+            st.warning(f"⚠️ {len(ventas_fallidas)} ventas de '{VENTAS_FILE_PATH}' fallaron. Revise la ID de los productos faltantes.")
             
     except FileNotFoundError:
         # Es normal que no exista si no hay ventas masivas en este momento
@@ -202,7 +202,12 @@ if not st.session_state.df_inventario.empty:
 
 
 # --- NAVEGACIÓN EN EL SIDEBAR ---
-# ... (El resto del código permanece igual) ...
+st.sidebar.header("Menú de Navegación")
+# La variable 'ventana_seleccionada' se define aquí
+ventana_seleccionada = st.sidebar.radio( 
+    "Selecciona una ventana:",
+    ('Dashboard', 'Registro de Productos', 'Registro de Ventas', 'Registro de Compras')
+)
 
 # -------------------------------------------------------------------------
 # CÓDIGO PARA MOSTRAR LA IMAGEN EN EL SIDEBAR
@@ -233,7 +238,6 @@ if ventana_seleccionada == 'Dashboard':
         # Cálculo de KPIs
         total_productos_unicos = df_inventario['Producto'].nunique()
         total_unidades_stock = df_inventario['Stock'].astype(int).sum()
-        # El cálculo de bajo stock ahora incluye negativos
         productos_bajo_stock = df_inventario[df_inventario['Stock'].astype(int) <= 10].shape[0]
 
         # Mostrar KPIs
@@ -350,7 +354,7 @@ elif ventana_seleccionada == 'Registro de Productos':
     st.subheader("Inventario Actual")
     st.dataframe(st.session_state.df_inventario, use_container_width=True)
 
-# --- REGISTRO DE VENTAS (MODIFICADO para stock negativo) ---
+# --- REGISTRO DE VENTAS ---
 elif ventana_seleccionada == 'Registro de Ventas':
     df_inventario = st.session_state.df_inventario
     st.title("💸 Registro de Ventas")
@@ -422,7 +426,7 @@ elif ventana_seleccionada == 'Registro de Ventas':
 
         st.markdown("---")
         st.subheader("Historial de Ventas")
-        # Esta tabla ahora solo mostrará las ventas registradas manualmente
+        # Esta tabla ahora solo mostrará las ventas registradas manualmente (porque se borró en la inicialización)
         st.dataframe(st.session_state.df_ventas_hist, use_container_width=True)
 
 
@@ -488,5 +492,3 @@ elif ventana_seleccionada == 'Registro de Compras':
         st.markdown("---")
         st.subheader("Historial de Compras")
         st.dataframe(st.session_state.df_compras_hist, use_container_width=True)
-
-
