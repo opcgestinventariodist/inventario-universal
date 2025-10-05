@@ -68,7 +68,7 @@ except FileNotFoundError:
 # --- ESTRUCTURA DE LA APLICACIÓN ---
 # ----------------------------------------------------
 
-# --- DASHBOARD (Corregido el error de sintaxis en px.bar) ---
+# --- DASHBOARD (Mantenido y Corregido el error de px.bar) ---
 if ventana_seleccionada == 'Dashboard':
     df_inventario = st.session_state.df_inventario
     st.title("📦 Control de Inventario - Distribuidora Universal del Llano")
@@ -93,12 +93,12 @@ if ventana_seleccionada == 'Dashboard':
         st.subheader("Visualizaciones")
         viz_col1, viz_col2 = st.columns(2)
 
-        # Gráfico 1: Niveles de Stock por Producto (Línea Corregida)
+        # Gráfico 1: Niveles de Stock por Producto
         with viz_col1:
             st.markdown("##### Niveles de Stock por Producto")
             df_stock_sorted = df_inventario.sort_values(by='Stock', ascending=False)
             fig_stock = px.bar(df_stock_sorted, x='Producto', y='Stock', text='Stock', 
-                               title="Stock por Producto", color='Producto', height=350) # El paréntesis se cierra correctamente aquí
+                               title="Stock por Producto", color='Producto', height=350) 
             st.plotly_chart(fig_stock, use_container_width=True)
 
         # Gráfico 2: Distribución de Productos por Categoría 
@@ -198,7 +198,7 @@ elif ventana_seleccionada == 'Registro de Productos':
     st.dataframe(st.session_state.df_inventario, use_container_width=True)
 
 
-# --- REGISTRO DE VENTAS (Mantenido) ---
+# --- REGISTRO DE VENTAS (SIN CAMPO DE FECHA) ---
 elif ventana_seleccionada == 'Registro de Ventas':
     df_inventario = st.session_state.df_inventario
     st.title("💸 Registro de Ventas")
@@ -224,6 +224,7 @@ elif ventana_seleccionada == 'Registro de Ventas':
             product_id = producto_data['ID']
 
             st.markdown("---")
+            # Usa 2 columnas para coincidir con la imagen que enviaste
             col_left, col_right = st.columns(2)
             
             # 2. Cantidad Vendida
@@ -274,7 +275,7 @@ elif ventana_seleccionada == 'Registro de Ventas':
         st.dataframe(st.session_state.df_ventas_hist, use_container_width=True)
 
 
-# --- REGISTRO DE COMPRAS (Mantenido) ---
+# --- REGISTRO DE COMPRAS (SIN CAMPO DE FECHA) ---
 elif ventana_seleccionada == 'Registro de Compras':
     df_inventario = st.session_state.df_inventario
     st.title("🛒 Registro de Compras (Entradas)")
@@ -300,6 +301,7 @@ elif ventana_seleccionada == 'Registro de Compras':
             product_id = producto_data['ID']
 
             st.markdown("---")
+            # Usa 2 columnas para coincidir con la imagen que enviaste
             col_left, col_right = st.columns(2)
             
             # 2. Cantidad Comprada
