@@ -5,7 +5,7 @@ import plotly.express as px
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
     page_title="Inventario Universal del Llano",
-    page_icon="📦",
+    page_icon="📋",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -61,8 +61,8 @@ except FileNotFoundError:
 if ventana_seleccionada == 'Dashboard':
     df_inventario = st.session_state.df_inventario
     
-    st.title("📦 Control de Inventario - Distribuidora Universal del Llano")
-    st.header("📊 Dashboard de Inventario")
+    st.title("📋 Control de Inventario - Distribuidora Universal del Llano")
+    st.header("📊 Dashboard KPI's de Inventario")
 
     if df_inventario.empty:
         st.info("No hay productos en el inventario. Añada productos desde 'Registro de Productos' para ver el Dashboard.")
@@ -129,7 +129,7 @@ if ventana_seleccionada == 'Dashboard':
 
 # --- REGISTRO DE PRODUCTOS (CON FORMULARIO Y ELIMINACIÓN) ---
 elif ventana_seleccionada == 'Registro de Productos':
-    st.title("➕ Registro de Productos")
+    st.title("📝 Registro de Productos")
     st.header("Ingresa los datos del nuevo producto:")
 
     # --- 1. FORMULARIO DE INGRESO ---
@@ -163,7 +163,7 @@ elif ventana_seleccionada == 'Registro de Productos':
 
     # --- 2. GESTIÓN Y ELIMINACIÓN ---
     st.markdown("---")
-    st.subheader("⚠️ Gestión y Eliminación de Productos")
+    st.subheader("🗑️ Eliminación de Productos")
 
     if st.session_state.df_inventario.empty:
         st.info("Aún no hay productos registrados para gestionar o eliminar.")
@@ -177,7 +177,7 @@ elif ventana_seleccionada == 'Registro de Productos':
             key='delete_multiselect'
         )
 
-        delete_button = st.button("🔴 Eliminar Productos Seleccionados")
+        delete_button = st.button("❌ Eliminar Productos Seleccionados")
 
         if delete_button:
             if productos_a_eliminar:
@@ -196,7 +196,7 @@ elif ventana_seleccionada == 'Registro de Productos':
 
 # --- REGISTRO DE VENTAS (Simulación) ---
 elif ventana_seleccionada == 'Registro de Ventas':
-    st.title("💸 Registro de Ventas")
+    st.title("📈 Registro de Ventas")
     st.info("Aquí se construiría el formulario y la tabla para registrar transacciones de venta.")
     if not st.session_state.df_inventario.empty:
         st.dataframe(st.session_state.df_inventario[['ID', 'Producto', 'Stock', 'Ventas']], use_container_width=True)
@@ -207,3 +207,4 @@ elif ventana_seleccionada == 'Registro de Compras':
     st.info("Aquí se construiría el formulario y la tabla para registrar entradas de inventario por compra.")
     if not st.session_state.df_inventario.empty:
         st.dataframe(st.session_state.df_inventario[['ID', 'Producto', 'Stock', 'Compras']], use_container_width=True)
+
