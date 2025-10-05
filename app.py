@@ -10,10 +10,8 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Definición de las opciones de Presentación
+# Definición de las opciones de Presentación y Categoría
 PRESENTACION_OPCIONES = ['libra', 'kilogramo', 'litro', 'paquete', 'unidad']
-
-# Definición de las opciones de Categoría
 CATEGORIA_OPCIONES = [
     'Harinas',
     'Margarinas',
@@ -123,7 +121,7 @@ if 'df_inventario' not in st.session_state:
     columnas = ['ID', 'Producto', 'Stock', 'Categoría', 'Presentación', 'Ventas', 'Compras']
     df_inventario_vacio = pd.DataFrame(columns=columnas)
     
-    # === 1. LÓGICA DE CARGA AUTOMÁTICA DEL INVENTARIO INICIAL ===
+    # === 1. LÓGICA DE CARGA AUTOMÁTICA DEL INVENTARIO INICIAL (inventario_inicial.xlsx) ===
     try:
         INVENTARIO_FILE_PATH = 'inventario_inicial.xlsx' 
         
@@ -165,10 +163,9 @@ if 'df_compras_hist' not in st.session_state:
     st.session_state.df_compras_hist = pd.DataFrame(columns=['ID', 'Producto', 'Cantidad'])
 
 
-# === 2. LÓGICA DE CARGA AUTOMÁTICA DE VENTAS DE MOVIMIENTO ===
+# === 2. LÓGICA DE CARGA AUTOMÁTICA DE VENTAS DE MOVIMIENTO (ventas_mes1.xlsx) ===
 if not st.session_state.df_inventario.empty:
     
-    # 🚨 ¡MODIFICACIÓN CLAVE AQUÍ! 🚨
     VENTAS_FILE_PATH = 'ventas_mes1.xlsx' 
     
     try:
@@ -195,22 +192,6 @@ if not st.session_state.df_inventario.empty:
         pass
     except Exception as e:
         st.warning(f"No se pudo leer el archivo '{VENTAS_FILE_PATH}'. Asegúrese de que el formato (ID, Cantidad Vendida) sea correcto. Error: {e}")
-
-
-# --- FUNCIÓN PARA AÑADIR PRODUCTO (Registro Manual) ---
-def add_product(new_id, new_category, new_name, new_presentation, new_stock):
-    """Añade un nuevo producto al DataFrame de inventario."""
-    new_row = pd.DataFrame([{
-        'ID': new_id,
-        'Producto': new_name,
-        'Stock': new_stock,
-        'Categoría': new_category,
-        'Presentación': new_presentation,
-        'Ventas': 0,
-        'Compras': 0
-    }])
-    st.session_state.df_inventario = pd.concat([st.session_state.df_inventario, new_row], ignore_index=True)
-    st.success(f"Producto '{new_name}' (ID: {new_id}) añadido con éxito!")
 
 
 # --- NAVEGACIÓN EN EL SIDEBAR ---
